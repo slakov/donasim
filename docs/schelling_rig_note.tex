@@ -1,0 +1,423 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[utf8]{inputenc}
+
+\usepackage{comment}
+\usepackage{verbatim}
+\usepackage{mathrsfs}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{dsfont}
+\usepackage{extarrows}
+\usepackage{mathtools}
+\usepackage{amsthm}
+\usepackage{xcolor}
+\usepackage{dirtytalk}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{dsfont}
+\usepackage{cases}
+
+\usepackage[english]{babel}
+
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{wrapfig}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\usepackage{parskip}
+\usepackage{academicons}
+\usepackage{xcolor}
+\onehalfspacing
+
+\newcommand{\orcid}[1]{\href{https://orcid.org/#1}{\includegraphics[width=8pt]{orcid.png}}}
+
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem*{theorem*}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{observation}{Observation}
+\theoremstyle{remark}
+\newtheorem*{remark}{\textbf{Remark}}
+\newtheorem*{conjecture}{\textbf{Conjecture}}
+\newtheorem*{partial proof}{Partial proof of the Conjecture}
+
+% Keywords command
+\providecommand{\keywords}[1]
+{
+  \small
+  \textbf{\textit{Keywords---}} #1
+}
+
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+\title{Schelling model on Random Intersection Graphs}
+\author{Maddalena Don{\`a}, Slavik Koval and Pieter Trapman\\
+\vspace{0.5cm}
+{\normalsize \it
+Faculty of Science and Engineering, University of Groningen, Netherlands}
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\begin{abstract}
+
+\end{abstract}
+
+\section{Introduction}
+In the paper ``Dynamic models of segregation" \cite{schelling1971dynamic} Schelling studies how discriminatory behavior leads to segregation in society. Individuals of two types, e.g. red and blue, are arranged on the squares of a finite grid with vacancies. Each individual is equipped with a tolerance threshold $\tau$: if the fraction of their neighbors that is of their same type is at least $\tau$, then they are \textit{content} and maintain their position; otherwise they move to the closest empty space that would make them satisfied, choosing uniformly at random if there is more than one option. The dynamics stops when everyone is satisfied with their neighborhood. Schelling shows that, even with relatively low values of $\tau$, segregation of the two types appears, and the segregation gets sharper as $\tau$ increases. This result is not obvious as situations of fully mixed neighborhoods would also satisfy the individuals' demands.
+
+
+
+\section{Model with static opinions}
+\subsection{Random Intersection Graphs}
+\label{Sec:RIG}
+The random intersection graph (RIG) was introduced by \cite{singer1996random} and \cite{karonski1999random} and is defined as follows. Given a set $V$ of $n$ individuals and a set $V'$ of $m$ groups, construct a bipartite auxiliary graph $\mathcal{B}(n,m,p)$ by drawing an edge between vertices $v \in V$ and $v' \in V'$ independently with probability $p$. The random intersection graph $\mathcal{G}(n,m,p)$ on the vertex set $V$ is obtained by drawing an edge between two individuals $v_1,v_2 \in V$ whenever there exists at least a group of which the two are members. Due to this construction, RIGs are characterized by the presence of cliques, i.e.\ fully connected components arising from the groups of the bipartite auxiliary graph, which we can think of as representing households, workplaces, etc.
+The probability that two vertices are connected in the RIG is $1-\left(1-p^2 \right)^m$, therefore the expected degree of a fixed vertex $v$ is $\left( n-1 \right) \left( 1-\left(1-p^2 \right)^m \right)$. We are interested in considering a sequence of RIG indexed by $n,m$ such that $n/m \to \beta$ and $p=\lambda/m$ for some constants $\beta,\lambda >0$. Under these assumptions, the expected degree of a vertex is bounded; in particular, the expected number of cliques a uniformly chosen vertex belongs to is $\lambda$, and the expected size of a uniformly chosen clique $\mathcal{C}$ tends to $\beta \lambda$. In fact, the number of cliques a uniformly chosen individual $v$ belongs to is distributed as $Bin(m, \lambda/m)$, while the size of a uniformly chosen clique $\mathcal{C}$ is $\lvert \mathcal{C}\rvert \sim Bin(n, \lambda/m) \approx Poiss(\beta \lambda)$, and, for $k \geq 0$
+\begin{equation}
+\label{eq: size of C}
+    \mathbb{P}(\lvert \mathcal{C}\rvert=k)= \frac{(\beta \lambda)^k}{k!}e^{-\beta \lambda}.
+\end{equation}
+
+\subsection{A death process with immigration in continuous time}
+\label{Sec:Process}
+
+Fix a parameter $\lambda>0$ and construct a random intersection graph $\mathcal{G}(n,m,\lambda/n)$ on $n$ vertices and $m$ groups, see Section \ref{Sec:RIG}. At time $t=0$, each individual is assigned independently the color blue (B) with probability $p \in (0,1)$ or red (R) with probability $1-p$, representing the individuals' opinions. For $t>0$, the edges of a clique are formed and deleted according to the satisfaction level of its members: an individual is more likely to leave their group if their opinion is minoritarian, while they are more likely to stay if their opinion is the one adopted by the majority. Independently of anything else, an individual can also join one of the cliques he is not yet part of, at constant rate. In the reversible-chain setting below, the rate of joining groups is not constant. Although the graph structure changes over time, individuals' opinions remain - for the moment - invariant. As $n,m \to \infty$, we study the evolution in time of a clique's size and the opinions of the individuals belonging to it with a death continuous-time Markov process with immigration.
+Denote by $B_\mathcal{C}(t)$, $R_\mathcal{C}(t)$ the number of individuals of a clique $\mathcal{C}$ at time $t$ that are blue and red, respectively. The state space of the continuous-time Markov process $X_\mathcal{C}=\{X_\mathcal{C}(t)\}_{t \geq 0}=\{(B_\mathcal{C}(t),R_\mathcal{C}(t))\}_{t \geq 0}$ is given by
+$$
+\mathcal{S}_\mathcal{C}=\{(x,y): x,y \in \mathbb{N}_0\},
+$$
+where $\mathbb{N}_0=\{0,1,2, \dots \}$. Note that, as we mentioned, the size of $\mathcal{C}$ changes over time, and we will denote by $\lvert \mathcal{C}(t) \lvert:= B_\mathcal{C}(t)+R_\mathcal{C}(t)$ the total number of individuals that are part of $\mathcal{C}$ at time $t$. By definition, the process $X_\mathcal{C}$ is independent of how the individuals are distributed in the rest of the graph.
+
+At $t=0$, conditioning on $\lvert \mathcal{C}(0) \lvert=k$, the number of blue individuals in $\mathcal{C}$ follows a $Bin(k,p)$.
+The initial distribution of the Markov process is given by the probabilities $p_k^{(x_0,y_0)}$, $k \in \mathbb{N}_{0}, x_0 \in \{0, \dots, k  \},$ and $y_0=k-x_0$, and, using equation (\ref{eq: size of C}) we get
+$$
+p_{k}^{(x_0,y_0)}=\mathbb{P} \big(  B_\mathcal{C}(0)=x_0, R_\mathcal{C}(0)=k-x_0)= \frac{(\beta \lambda)^k}{k!} e^{-\beta\lambda} \binom{k}{x_0}p^{x_0}(1-p)^{k-x_0},
+$$
+where $p$ is the probability that an individual is assigned the color blue.
+
+Define as follows the transition rates (or intensities) of the Markov process $X_\mathcal{C}$. The rate at which new individuals join $\mathcal{C}$ is a constant inversely proportional to the number of cliques:
+\begin{center}
+    $(x,y) \to (x+1, y)$ at rate $\gamma_1/m$, \\
+    $(x,y) \to (x, y+1)$ at rate $\gamma_2/m$,
+\end{center}
+for some $\gamma_1, \gamma_2 \in \mathbb{R}_{> 0}.$ As blue and red individuals are allowed to \textit{migrate} from a clique $\mathcal{C}'$ to $\mathcal{C}$, we note that states of the form $(0,j)$ and $(i,0)$ are not absorbing (i.e. the Markov process will leave these states with strictly positive probability).
+
+The rates at which individuals leave $\mathcal{C}$ depend on their contentment with the opinions of the other members of the group:
+\begin{itemize}
+    \item if blue is the majoritarian opinion or if there is a tie ($x\geq y$)
+    \begin{center}
+        $(x,y) \to (x-1,y)$ at rate $\beta_1 x$\\
+        $(x,y) \to (x,y-1)$ at rate $\beta_2 y$
+    \end{center}
+    \item if blue is the minoritarian opinion ($x<y$)
+    \begin{center}
+        $(x,y) \to (x-1,y)$ at rate $\beta_2 x$\\
+        $(x,y) \to (x,y-1)$ at rate $\beta_1 y$
+    \end{center}
+\end{itemize}
+where $\beta_1,\beta_2$ are positive constants, $\beta_1<\beta_2$. So, the per-individual leaving rate is larger if the individual's opinion is minoritarian.
+
+
+From the transition rates defined above, we can explicit the non-trivial transition probabilities of the Markov process.
+$$
+\mathbb{P}(B_\mathcal{C}(t+dt)=x+1, R_\mathcal{C}(t+dt)=y \lvert B_\mathcal{C}(t)=x, R_\mathcal{C}(t)=y)= \frac{\gamma_1}{m}dt+ o(dt),
+$$
+$$
+\mathbb{P}(B_\mathcal{C}(t+dt)=x, R_\mathcal{C}(t+dt)=y+1 \lvert B_\mathcal{C}(t)=x, R_\mathcal{C}(t)=y)= \frac{\gamma_2}{m}dt+ o(dt),
+$$
+and, if $x\geq y$,
+$$
+\mathbb{P}(B_\mathcal{C}(t+dt)=x-1, R_\mathcal{C}(t+dt)=y \lvert B_\mathcal{C}(t)=x, R_\mathcal{C}(t)=y, B_\mathcal{C}(t)>R_\mathcal{C}(t))= \beta_1 x dt+ o(dt)
+$$
+$$
+\mathbb{P}(B_\mathcal{C}(t+dt)=x, R_\mathcal{C}(t+dt)=y-1 \lvert B_\mathcal{C}(t)=x, R_\mathcal{C}(t)=y, B_\mathcal{C}(t)>R_\mathcal{C}(t))= \beta_2 y dt+ o(dt)
+$$
+therefore
+\begin{align*}
+ \mathbb{P}\big(B_\mathcal{C}(t+dt)= x, R_\mathcal{C}(t+dt)=y \lvert B_\mathcal{C}(t)=x, R_\mathcal{C}(t)=y, B_\mathcal{C}(t)>R_\mathcal{C}(t)\big)=\\
+ 1-\Big(\frac{\gamma_1+\gamma_2}{m}+\beta_1 x +\beta_2 y \Big) dt+ o(dt);
+\end{align*}
+
+similarly for $x<y$.
+
+In general, for $s,s' \in\mathcal{S}_{\mathcal{C}}$, $s'\neq s$, we indicate by $q_{s,s'}$ the rate of jumps from state $s$ to state $s'$, and by $p_{s,s'}(dt)$ the probability that the jump from $s$ to $s'$ happens in the infinitesimal time interval $dt$, that is
+$$
+p_{s,s'}(dt)=\mathbb{P}(X_\mathcal{C}(t+dt)=s' \lvert X_\mathcal{C}(t)=s) = q_{s,s'}dt + o(dt).
+$$
+For $s=s'$ define $\sum_{s' \neq s}q_{s,s'}=-q_{s,s}$; then $p_{s,s}(dt)=1+q_{s,s}dt+o(dt)$.
+
+Note that the chain is homogeneous, i.e. the transition rates are not time dependent.
+
+The process described above is irreducible, that is from a state $(x,y)$ it is possible to reach any other state $(x',y') \in \mathcal{S}_\mathcal{C}$ with positive probability. Moreover, it is also non-explosive since the total rate of leaving any state $(x,y)$ is given by
+$$
+\sum_{s' \in \mathcal{S}_\mathcal{C}, s' \neq (x,y)} q_{(x,y),s'}=\frac{\gamma_1+\gamma_2}{m} + \theta(x,y),
+$$
+where $\theta(x,y)$ is a linear function in $x$ and $y$.
+
+The total population $\{B_\mathcal{C}(t)+R_\mathcal{C}(t)\}_{t\geq 0}$ of $X_\mathcal{C}$ has the following transition rates:
+\begin{center}
+    $x+y \to x+y+1$ at rate $\frac{\gamma_1+\gamma_2}{m}$\\
+\end{center}
+\begin{itemize}
+    \item if $x\geq y$
+    \begin{center}
+        $x+y \to x+y-1$ at rate $x\beta_1 +y\beta_2$
+    \end{center}
+    \item if $x<y$
+    \begin{center}
+        $x+y \to x+y-1$ at rate $x\beta_2+y\beta_1$.
+    \end{center}
+\end{itemize}
+
+
+Consider now a one-type death process with immigration $\Tilde{X}$ in continuous time, and indicate by $N(t)$ the population of $\Tilde{X}$ alive at time $t$. Define the transition rates of $\Tilde{X}$ as follows:
+\begin{center}
+    $n \to n+1$ with rate $\frac{\gamma_1 +\gamma_2}{m}$\\
+    $n \to n-1$ with rate $\beta_1 n$.
+\end{center}
+Via a coupling argument we can compare, for all $t \geq 0$, the total population $B_\mathcal{C}(t)+R_\mathcal{C}(t)$ of $X_\mathcal{C}$ and the total population $N(t)$ of $\Tilde{X}$. Indeed, we note that the immigration rates for the two chains are given by the same constant, while the death rate is smaller for $\Tilde{X}$. Therefore, for all $t \geq 0$, the total population of $X_\mathcal{C}$ is a.s. dominated by the chain $\Tilde{X}$, that is positive recurrent. For $n \in \mathbb{N}_0$, $\Tilde{X}$ returns to the state $n$ infinitely many times, and the expected time of return is finite. This implies that the chain $X_\mathcal{C}$ returns infinitely many times to the finite box
+$$
+A_n :\{ (x,y) \in \mathbb{N}_0\times \mathbb{N}_0; x+y\leq n\},
+$$
+and that the expected return time to $A_n$ is finite. By irreducibility of $X_\mathcal{C}$, we can then conclude that $X_\mathcal{C}$ is positive recurrent.
+
+Irreducibility and positive recurrence ensure (see e.g. \cite[Thm. 15, pg. 301]{grimmett2020probability}) that a stationary distribution $\pi$ for $X_\mathcal{C}$ exists, is unique and satisfies the following equation:
+\begin{itemize}
+\item if $x \geq y$
+$$
+\pi(x,y) \Big[ \frac{\gamma_1}{m} + \frac{\gamma_2}{m} + x\beta_1 +y\beta_2 \Big]=
+$$
+$$
+=\frac{\gamma_1}{m} \pi(x-1,y)+ \frac{\gamma_2}{m}\pi(x,y-1)+\pi(x+1,y) (x+1)\beta_1 + \pi(x,y+1)(y+1)\beta_2
+$$
+\item if $x<y$ we have to distinguish two cases:
+\begin{itemize}
+    \item[1)] if $x+1=y$
+    $$
+\pi(x,y) \Big[ \frac{\gamma_1}{m} + \frac{\gamma_2}{m} + x\beta_2 +y\beta_1 \Big]=
+$$
+$$
+=\frac{\gamma_1}{m} \pi(x-1,y)+ \frac{\gamma_2}{m}\pi(x,y-1)+\pi(x+1,y) (x+1)\beta_1 + \pi(x,y+1)(y+1)\beta_2
+$$
+    \item[2)] if $x+1<y$
+    $$
+\pi(x,y) \Big[ \frac{\gamma_1}{m} + \frac{\gamma_2}{m} +x\beta_2 +y\beta_1 \Big]=
+$$
+$$
+=\frac{\gamma_1}{m} \pi(x-1,y)+ \frac{\gamma_2}{m}\pi(x,y-1)+\pi(x+1,y) (x+1)\beta_2 + \pi(x,y+1)(y+1)\beta_1.
+$$
+\end{itemize}
+\end{itemize}
+In general, it is not possible to find an explicit form for the stationary distribution.
+
+\begin{observation}
+\label{Obs1}
+Arguing as before, we can say that the total population $\{B_\mathcal{C}(t)+R_\mathcal{C}(t)\}_{t \geq 0}$ is bounded from below by a death and immigration process $\Hat{X}$ with an immigration rate given by $\frac{\gamma_1+\gamma_2}{m}$ and a per-individual death rate $\beta_2$. It is well known (see \cite[Thm. 14 pg. 309]{grimmett2020probability}) that $\Tilde{X}$ (defined above) is asymptotically distributed as $Poiss(\rho_1)$ and $\Hat{X}$ is asymptotically distributed as $Poiss(\rho_2)$, where $\rho_1=(\gamma_1+\gamma_2)/(m\beta_1)$, and $\rho_2=(\gamma_1+\gamma_2)/(m\beta_2)$. That is, as $t \to \infty$,
+$$
+\mathbb{P}(\Tilde{X}(t)=n) \to \frac{\rho_1^n}{n!}e^{-\rho_1}, \quad n=0,1,2,\dots,
+$$
+and similarly for $\Hat{X}$.
+Almost surely, for large $t$ and $n \in \mathbb{N}_0$,
+$$
+\left( \frac{\gamma_1+\gamma_2}{m \beta_1}\right)^n \frac{1}{n!} e^{-(\gamma_1+\gamma_2)/(m\beta_1)} \leq \mathbb{P}(B_\mathcal{C}(t)+R_\mathcal{C}(t)=n) \leq \left( \frac{\gamma_1+\gamma_2}{m \beta_2}\right)^n \frac{1}{n!} e^{-(\gamma_1+\gamma_2)/(m\beta_2)}.
+$$
+\end{observation}
+
+\subsection{The deterministic case}
+\label{Sec:Deterministic}
+Assuming to have a large population size, i.e. $B_\mathcal{C}(0)=:x_0, R_\mathcal{C}(0)=:y_0$ are large, we are interested in studying the associated deterministic model, solving a system of ODEs. In particular, assume $\gamma_1>\gamma_2$, $\beta_1<\beta_2$ and $x_0 \geq y_0$. The evolution of the number of blue and red individuals in a clique $\mathcal{C}$ is governed by the following ODEs system:
+\begin{equation}
+\label{system 1}
+\begin{cases}
+    \frac{dB_\mathcal{C}(t)}{dt}=\frac{\gamma_1}{m}-\beta_1B_\mathcal{C}(t), \\
+    \frac{dR_\mathcal{C}(t)}{dt}=\frac{\gamma_2}{m}-\beta_2R_\mathcal{C}(t),
+\end{cases}
+\end{equation}
+
+with solutions
+$$
+\begin{cases}
+    B_\mathcal{C}(t)=x_0e^{-\beta_1t}+\frac{\gamma_1}{m} \frac{1-e^{-\beta_1 t}}{\beta_1}, \\
+    R_\mathcal{C}(t)=y_0e^{-\beta_2t}+\frac{\gamma_2}{m} \frac{1-e^{-\beta_2 t}}{\beta_2}.
+\end{cases}
+$$
+One can notice that $B_\mathcal{C}(t) > R_\mathcal{C}(t)$ for all $t > 0$, and, as $t \to \infty$, $B_\mathcal{C}(t) \to \frac{\gamma_1}{m \beta_1}$, while $R_\mathcal{C}(t) \to \frac{\gamma_2}{m \beta_2}$, which represent the equilibrium points.
+
+If, instead, $x_0<y_0$, then the system becomes
+\begin{equation}
+\label{system 2}
+\begin{cases}
+    \frac{dB_\mathcal{C}(t)}{dt}=\frac{\gamma_1}{m}-\beta_2B_\mathcal{C}(t)\mathds{1}(t< T) -\beta_1 B_\mathcal{C}(t)\mathds{1}(t \geq T), \\
+    \frac{dR_\mathcal{C}(t)}{dt}=\frac{\gamma_2}{m}-\beta_1R_\mathcal{C}(t)\mathds{1}(t<T) -\beta_2R_\mathcal{C}(t) \mathds{1}(t \geq T),
+\end{cases}
+\end{equation}
+where $T:= min \{ t>0: B_\mathcal{C}(t) \geq R_\mathcal{C}(t)  \},$ and $T:=\infty$ if the set is empty, with solutions
+$$
+\begin{cases}
+    B_\mathcal{C}(t)=\left(x_0e^{-\beta_2t}+\frac{\gamma_1}{m} \frac{1-e^{-\beta_2 t}}{\beta_2}\right) \mathds{1}(t <T) + \left(B_\mathcal{C}(T)e^{-\beta_1t}+\frac{\gamma_1}{m} \frac{1-e^{-\beta_1 t}}{\beta_1}\right) \mathds{1}(t \geq T), \\
+    R_\mathcal{C}(t)=\left(y_0e^{-\beta_1t}+\frac{\gamma_2}{m} \frac{1-e^{-\beta_1 t}}{\beta_1}\right) \mathds{1}(t<T)+\left(R_\mathcal{C}(T)e^{-\beta_2t}+\frac{\gamma_2}{m} \frac{1-e^{-\beta_2 t}}{\beta_2}\right) \mathds{1}(t \geq T).
+\end{cases}
+$$
+
+$B_\mathcal{C}(t) \to \frac{\gamma_1}{m \beta_2}$ and $R_\mathcal{C}(t) \to \frac{\gamma_2}{m \beta_1}$. Therefore, a sufficient condition for $T<\infty$ is $\frac{\gamma_1 \beta_1}{\gamma_2 \beta_2}>1$. In this case we know that, for $T$ sufficiently large, $B_\mathcal{C}(T) \geq R_\mathcal{C}(T)$ and, for $t \geq T$, the ODEs system becomes as in (\ref{system 1}), with initial conditions $(B_\mathcal{C}(T),R_\mathcal{C}(T))$. See Figure \ref{Fig1} for a graphical representation.
+
+\begin{figure}[h]
+\begin{subfigure}{0.5\textwidth}
+\includegraphics[width=0.95\linewidth, height=6cm]{ODEs_sol_x0_bigger_than_y0.png}
+\end{subfigure}
+\begin{subfigure}{0.5\textwidth}
+\includegraphics[width=0.95\linewidth, height=6cm]{ODEs_sol_y0_bigger_than_x0.png}
+\end{subfigure}
+\\
+\begin{subfigure}{0.5\textwidth}
+\includegraphics[width=0.95\linewidth, height=6cm]{Simulation_x0_bigger_than_y0.png}
+\end{subfigure}
+\begin{subfigure}{0.5\textwidth}
+\includegraphics[width=0.95\linewidth, height=6cm]{Simulation_y0_bigger_than_x0.png}
+\end{subfigure}
+\caption{The first row shows plots of the solutions of systems (\ref{system 1}) (left) and (\ref{system 2}) (right), with parameters $\gamma_1=300, \gamma_2=150, \beta_1=0.2, \beta_2=0.3, m=10$ and initial conditions $(x_0,y_0)$ given by $(800,500)$ and $(500,800)$ respectively. The second row shows, for comparison, simulations of the random process with the same parameter setup.}
+\label{Fig1}
+\end{figure}
+
+\subsection{Tolerance threshold}
+In Sections \ref{Sec:Process} and \ref{Sec:Deterministic}, we assumed that individuals leave a clique $\mathcal{C}$ with rates that depend on whether in $\mathcal{C}$ their color is the majority or not.
+As studied in \cite{schelling1971dynamic}, it might be interesting to consider that individuals have, toward their neighborhood in $\mathcal{C}$, a more general \textit{tolerance threshold} $\tau$. We assume that the tolerance, or \textit{demand}, is the same for both species. In this case, the model would have the same immigration rates as the model of Section \ref{Sec:Process}, while the leaving (or death) rates would become:
+\begin{itemize}
+    \item if $x/(x+y)\geq \tau$
+    \begin{center}
+        $(x,y) \to (x-1,y)$ at rate $\beta_1 x$\\
+    \end{center}
+    \item if $x/(x+y)<\tau$
+    \begin{center}
+        $(x,y) \to (x-1,y)$ at rate $\beta_2 x$\\
+    \end{center}
+\end{itemize}
+with $\beta_1<\beta_2$ and similarly for the red individuals. It could then be interesting to simulate and see, fixing $n,m,p,\beta_1,\beta_2,\gamma_1,\gamma_2$, what is the minimal threshold $\tau$ for which segregation is still sharp.
+
+
+\subsection{The reversible chain}
+
+Let us now study the case in which the chain is reversible and the stationary distribution can be found in explicit form.
+
+Consider the following transition rates:
+ \begin{center}
+        $(x,y) \to (x+1,y)$ at rate $\lambda_1(x,y)$\\
+        $(x,y) \to (x,y+1)$ at rate $\lambda_2(x,y)$\\
+        $(x,y) \to (x-1,y)$ at rate $\mu_1(x,y)$\\
+        $(x,y) \to (x,y-1)$ at rate $\mu_2(x,y)$
+    \end{center}
+
+\begin{proposition}[Kolmogorov's Criterion, see \cite{grimmett2020probability}]
+\label{prop:kolmogorov}
+
+The process is reversible if its transition rates satisfy the following condition for all states $(x, y)$:
+\begin{equation}
+\begin{gathered}
+\lambda_{1}(x,y)\lambda_{2}(x+1,y)\mu_{2}(x,y+1)\mu_{1}(x+1,y+1)=\\
+\lambda_{2}(x,y)\lambda_{1}(x,y+1)\mu_{1}(x+1,y)\mu_{2}(x+1,y+1)
+\end{gathered}
+\label{eq:kolmogorov}
+\end{equation}
+\end{proposition}
+
+\begin{definition}[General transition rates for chain reversibility]
+\label{def:rates}
+Consider the following rates:
+\begin{equation*}
+\begin{gathered}
+\lambda_{1}(x,y) =\frac{f_1(x)}{g(x+y)} , \quad
+\lambda_{2}(x,y) =\frac{f_2(y)}{g(x+y)} ,\\
+\mu_{1}(x,y) =x\frac{\hat{g}(x+y)}{\hat{f}_{1}(x)}, \quad
+\mu_{2}(x,y) =y\frac{\hat{g}(x+y)}{\hat{f}_{2}(y)} ,
+\end{gathered}
+\end{equation*}
+where all the functions are continuous in their arguments and $g, \hat{f}_1, \hat{f}_2$ are bounded away from zero.
+\end{definition}
+
+\begin{proposition}
+The rates given in Definition \ref{def:rates} satisfy the reversibility condition~\eqref{eq:kolmogorov}. Moreover, the stationary distribution has the following two equivalent expressions:
+\begin{align}
+\label{espression of pi 1}
+\pi_{x,y} &=\left(\prod_{j=1}^{y}\frac{\lambda_{2}(x,j-1)}{\mu_{2}(x,j)}\right)\left(\prod_{i=1}^{x}\frac{\lambda_{1}(i-1,0)}{\mu_{1}(i,0)}\right)\pi_{0,0}\\
+\label{espression of pi 2}
+& = \left(\prod_{i=1}^{x}\frac{\lambda_{1}(i-1,y)}{\mu_{1}(i,y)}\right)\left(\prod_{j=1}^{y}\frac{\lambda_{2}(0,j-1)}{\mu_{2}(0,j)}\right)\pi_{0,0},
+\end{align}
+where $\pi_{0,0}$ is a normalizing constant.
+\end{proposition}
+\begin{proof}
+The result is easily verified by substituting the arrival rates of Definition \ref{def:rates} in the reversibility condition~\eqref{eq:kolmogorov}:
+
+$$
+    \frac{f_1(x)}{g(x+y)} \frac{f_2(y)}{g(x+y+1)} (y+1) \frac{\hat{g}(x+y+1)}{\hat{f}_2(y+1)}(x+1)\frac{\hat{g}(x+y+2)}{\hat{f}_1(x+1)}=
+$$
+$$
+=\frac{f_2(y)}{g(x+y)} \frac{f_1(x)}{g(x+y+1)} (x+1) \frac{\hat{g}(x+y+1)}{\hat{f}_1(x+1)}(y+1)\frac{\hat{g}(x+y+2)}{\hat{f}_2(y+1)}.
+$$
+To get an explicit form of $\pi$, we can use iteratively one of the following balance equations
+\begin{equation}
+    \label{iteration1}
+    \pi_{x-1,y}\lambda_1(x-1,y)= \pi_{x,y}\mu_1(x,y),
+\end{equation}
+\begin{equation}
+    \label{iteration2}
+    \pi_{x,y-1}\lambda_2(x,y-1)= \pi_{x,y}\mu_2(x,y),
+\end{equation}
+and one can check that (\ref{iteration1}) leads to the formulation (\ref{espression of pi 1}), while (\ref{iteration2}) leads to (\ref{espression of pi 2}). We observe that (\ref{espression of pi 1}) and (\ref{espression of pi 2}) are equivalent since the rates satisfy (\ref{eq:kolmogorov}).
+\end{proof}
+
+\begin{observation}
+    If the conditions (\ref{conditions rates}) outlined below are met for the rates defined in Definition \ref{def:rates}, then the individuals join and leave groups according to their satisfaction with respect to the other group members' opinions, as described in Section \ref{Sec:Process}.
+\begin{equation}
+\label{conditions rates}
+    \begin{gathered}
+        \frac{\partial\lambda_1(x,y)}{\partial x}>0, \quad \frac{\partial\lambda_1(x,y)}{\partial y}<0, \\
+        \frac{\partial\lambda_2(x,y)}{\partial x}<0, \quad \frac{\partial\lambda_2(x,y)}{\partial y}>0,\\
+        \frac{\partial\mu_1(x,y)}{\partial x}>0, \quad \frac{\partial\mu_1(x,y)}{\partial y}<0, \\
+       \frac{\partial}{\partial x} \left( \frac{\mu_1(x,y)}{x} \right)<0, \quad \frac{\partial}{\partial y} \left( \frac{\mu_1(x,y)}{x} \right)>0,  \\
+        \frac{\partial\mu_2(x,y)}{\partial x}<0, \quad \frac{\partial\mu_2(x,y)}{\partial y}>0, \\
+        \frac{\partial}{\partial x} \left( \frac{\mu_2(x,y)}{x} \right)>0, \quad \frac{\partial}{\partial y} \left( \frac{\mu_2(x,y)}{x} \right)<0.
+    \end{gathered}
+\end{equation}
+\end{observation}
+
+An example of rates as in Definition \ref{def:rates} is the following
+\begin{equation*}
+\begin{gathered}
+\lambda_{1}(x,y) =\alpha_1\frac{\beta_1+x}{\gamma+x+y} , \quad
+\lambda_{2}(x,y) =\alpha_2\frac{\beta_2+y}{\gamma+x+y} ,\\
+\mu_{1}(x,y) =x \delta_1 \frac{\hat{\gamma}+x+y}{\hat{\beta}_{1}+x}, \quad
+\mu_{2}(x,y) =y \delta_2 \frac{\hat{\gamma}+x+y}{\hat{\beta}_{2}+y},
+\end{gathered}
+\end{equation*}
+and we note that, choosing all parameters to be positive and such that $\gamma>max\{\beta_1,\beta_2\}, \hat{\gamma}>max\{\hat{\beta}_1,\hat{\beta}_2\}$, then the conditions in (\ref{conditions rates}) are also satisfied. In this case, the stationary distribution can be written as
+\begin{equation*}
+\pi_{x,y} = \pi_{0,0} \left(\frac{\alpha_1}{\delta_1}\right)^x \left(\frac{\alpha_2}{\delta_2}\right)^y \frac{1}{x!y!} \frac{\prod_{i=1}^{x} \left[(\beta_1+i-1)(\hat{\beta}_1+i)\right]\prod_{j=1}^{y} \left[(\beta_2+j-1)(\hat{\beta}_2+j)\right]}{\prod_{k=1}^{x+y}\left[ (\gamma+k-1)(\hat{\gamma}+k) \right]},
+\label{eq:main_result}
+\end{equation*}
+where $\pi_{0,0}$ is a normalizing constant.
+
+In the reversible case, it is possible to find an explicit formula for $\pi$, and therefore it can be numerically approximated. This makes the reversible case interesting to analyze. Choose parameters to satisfy the conditions mentioned above, numerically approximate $\pi$ and simulate the stochastic process. The expected number of blue individuals is given by $\sum_{x,y}x\pi_{x,y}$, and similarly for red. The statistic $\sum_{x,y} \frac{x}{x+y}\pi_{x,y}$ may also be informative when conditioning on non-empty cliques. The variances and covariance can also be computed; one expects the covariance between the number of red and blue individuals to be negative. Moreover, one can compute the probability that the chain is in a state of segregation $\mathbb{P}(\text{full segregation})= \sum_{x \geq 1}\pi_{x,0} + \sum_{y\geq 1}\pi_{0,y}$.
+
+
+\section{Voter model dynamics}
+We are now interested in allowing people's opinion to change over time. We adopt the standard notation of the voter model and extend the one already introduced in Section \ref{Sec:Process}; we refer to \cite{liggett1985interacting} for a detailed description of the voter model.
+
+
+Call $G_n(t)=\{V_n,E_n(t)\}$ the random intersection graph at time $t$. A configuration $\eta: V_n \to \{0,1\}^{V_n}$ assigns value $1$ to blue individuals of $G_n$ and $0$ to red ones. For each $t\geq 0$, we denote by $\eta_t$ the configuration of $G_n(t)$, and, for each $x \in V_n$, we denote by $\eta_t(x) \in \{0,1\}$ the color - or state - of vertex $x$ at time $t$. Define $c(x,\eta)\geq 0$ the rate at which the vertex $x$ changes from $\eta(x)$ to $1-\eta(x)$ when the graph configuration is $\eta$. For the model to be well-defined we need to impose that, even in the large population limit, the rates are locally dependent (i.e. the change of an individual's opinion depends on a finite number of neighbors) and uniformly bounded, that is
+$$
+\sup_{x,\eta} c(x,\eta)<\infty.
+$$
+
+For simulations, after assigning a color to each individual and arranging them into overlapping cliques following the random intersection graph construction defined above, one can allow individuals to change opinions before the dynamics starts. For example, each individual checks which color is the majority among their neighbors (considering all cliques they belong to, or picking one clique at random), and, if the color is different from their own, adopts it with some probability. This happens only once and then the dynamics starts.
+
+
+
+\bibliographystyle{abbrv}
+\bibliography{bibliography}
+
+\end{document}

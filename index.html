@@ -1,0 +1,1936 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RIG Dynamics Lab</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #1f2937;
+      --muted: #667085;
+      --line: #d9dee8;
+      --blue: #2563eb;
+      --red: #e5484d;
+      --green: #1f9d72;
+      --amber: #d89a19;
+      --soft-blue: rgba(37, 99, 235, 0.12);
+      --soft-red: rgba(229, 72, 77, 0.12);
+      --shadow: 0 18px 42px rgba(31, 41, 55, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(247, 248, 251, 0.9)),
+        var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: var(--panel);
+      border-radius: 8px;
+      min-height: 38px;
+      padding: 0 14px;
+      cursor: pointer;
+      transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+    }
+
+    button:hover {
+      border-color: #aeb7c7;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .app {
+      width: min(1480px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 20px 0 28px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.1;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .title p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: #eef1f6;
+      border: 1px solid #e1e6ee;
+      border-radius: 8px;
+    }
+
+    .tab {
+      border: 0;
+      min-height: 34px;
+      background: transparent;
+      color: #526071;
+      white-space: nowrap;
+    }
+
+    .tab.active {
+      color: var(--ink);
+      background: var(--panel);
+      box-shadow: 0 2px 8px rgba(31, 41, 55, 0.08);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(230px, 280px) minmax(380px, 1fr) minmax(260px, 330px);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .panel,
+    .stage {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 14px;
+    }
+
+    .panel h2 {
+      margin: 2px 0 14px;
+      font-size: 14px;
+      line-height: 1.25;
+      font-weight: 740;
+      color: #344054;
+    }
+
+    .control {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 14px;
+    }
+
+    .control small {
+      color: #7a8597;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .control-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+      color: #344054;
+    }
+
+    .control output {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    input[type="number"] {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 10px;
+      color: var(--ink);
+      background: #fbfcfe;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .actions button:first-child {
+      grid-column: 1 / -1;
+      color: white;
+      background: #111827;
+      border-color: #111827;
+    }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      min-height: 620px;
+    }
+
+    #scene {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 620px;
+    }
+
+    .status-pill {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: calc(100% - 28px);
+      min-height: 34px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(217, 222, 232, 0.9);
+      color: #344054;
+      font-size: 13px;
+      box-shadow: 0 8px 22px rgba(31, 41, 55, 0.08);
+      backdrop-filter: blur(10px);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--amber);
+      flex: 0 0 auto;
+    }
+
+    .dot.running {
+      background: var(--green);
+    }
+
+    .dot.done {
+      background: #111827;
+    }
+
+    .metrics {
+      display: grid;
+      gap: 10px;
+      margin: 0 0 14px;
+    }
+
+    .metric {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #edf0f5;
+    }
+
+    .metric dt {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric dd {
+      margin: 0;
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 720;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 12px 0 16px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      min-width: 0;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+    }
+
+    #chart {
+      width: 100%;
+      height: 112px;
+      border: 1px solid #edf0f5;
+      border-radius: 8px;
+      background: #fbfcfe;
+      margin-bottom: 14px;
+    }
+
+    .bars {
+      display: grid;
+      gap: 7px;
+    }
+
+    .interpretation {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #edf0f5;
+    }
+
+    .interpretation h3 {
+      margin: 0 0 10px;
+      color: #344054;
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .result-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .result-list li {
+      color: #5c6678;
+      font-size: 12px;
+      line-height: 1.4;
+      border-left: 3px solid #dce3ee;
+      padding-left: 9px;
+    }
+
+    .result-list strong {
+      color: var(--ink);
+      font-weight: 720;
+    }
+
+    .formula {
+      margin-top: 12px;
+      padding: 10px;
+      color: #526071;
+      background: #fbfcfe;
+      border: 1px solid #edf0f5;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .experiment {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #edf0f5;
+    }
+
+    .experiment h3 {
+      margin: 0 0 10px;
+      color: #344054;
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .experiment-controls {
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .experiment-controls label {
+      color: #5c6678;
+      font-size: 12px;
+    }
+
+    .experiment-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .experiment-actions button {
+      min-height: 34px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
+    .ensemble {
+      color: #526071;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .estimate-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      overflow: hidden;
+      border-radius: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .estimate-table th,
+    .estimate-table td {
+      padding: 7px 6px;
+      border-bottom: 1px solid #edf0f5;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .estimate-table th:first-child,
+    .estimate-table td:first-child {
+      text-align: left;
+    }
+
+    .estimate-table th {
+      color: #344054;
+      background: #fbfcfe;
+      font-weight: 720;
+    }
+
+    .bar {
+      height: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #edf0f5;
+      display: flex;
+      border: 1px solid #e4e8ef;
+    }
+
+    .bar .blue {
+      background: var(--blue);
+    }
+
+    .bar .red {
+      background: var(--red);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media (max-width: 1080px) {
+      .workspace {
+        grid-template-columns: minmax(220px, 280px) 1fr;
+      }
+
+      .readout {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        width: min(100vw - 20px, 720px);
+        padding-top: 12px;
+      }
+
+      .topbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .tabs {
+        width: 100%;
+      }
+
+      .tab {
+        flex: 1;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .stage,
+      #scene {
+        min-height: 520px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="title">
+        <h1>RIG Dynamics Lab</h1>
+        <p>Absorbing threshold dynamics and finite voter-model consensus on RIGs.</p>
+      </div>
+      <nav class="tabs" aria-label="Simulation mode">
+        <button class="tab active" type="button" data-mode="threshold">Tolerance threshold</button>
+        <button class="tab" type="button" data-mode="voter">Voter model</button>
+      </nav>
+    </header>
+
+    <section class="workspace">
+      <aside class="panel controls" aria-label="Controls">
+        <h2>Parameters</h2>
+
+        <label class="control">
+          <span class="control-row"><span><strong>n</strong> members</span><output id="agentsOut"></output></span>
+          <input id="agents" type="range" min="50" max="180" step="10" value="110">
+          <small>Individuals in the vertex set V_n.</small>
+        </label>
+
+        <label class="control">
+          <span class="control-row"><span><strong>m</strong> groups</span><output id="cliquesOut"></output></span>
+          <input id="cliques" type="range" min="10" max="36" step="1" value="24">
+          <small>Auxiliary groups that induce cliques in the projected RIG.</small>
+        </label>
+
+        <label class="control">
+          <span class="control-row"><span><strong>&lambda;</strong> memberships</span><output id="lambdaOut"></output></span>
+          <input id="lambda" type="range" min="0.70" max="3.50" step="0.10" value="1.70">
+          <small>Each member joins each group with probability &lambda;/m.</small>
+        </label>
+
+        <label class="control" id="tauControl">
+          <span class="control-row"><span><strong>&tau;</strong> demand</span><output id="tauOut"></output></span>
+          <input id="tau" type="range" min="0.50" max="0.90" step="0.01" value="0.62">
+          <small>Minimum same-colour fraction required in every group membership.</small>
+        </label>
+
+        <label class="control">
+          <span class="control-row"><span><strong>p<sub>B</sub></strong> initial blue</span><output id="blueOut"></output></span>
+          <input id="blue" type="range" min="0.15" max="0.85" step="0.01" value="0.50">
+          <small>Initial Bernoulli probability that a member has blue opinion.</small>
+        </label>
+
+        <label class="control">
+          <span class="control-row"><span>Update speed</span><output id="speedOut"></output></span>
+          <input id="speed" type="range" min="1" max="9" step="1" value="5">
+          <small>Number of simulated update attempts per animation frame.</small>
+        </label>
+
+        <label class="control">
+          <span class="control-row"><span>Seed</span></span>
+          <input id="seed" type="number" min="1" step="1" value="42">
+          <small>Fixes the random graph and initial opinions for reproducible runs.</small>
+        </label>
+
+        <div class="actions">
+          <button id="run" type="button">Run</button>
+          <button id="step" type="button">Step</button>
+          <button id="reset" type="button">Reset</button>
+          <button id="newSeed" type="button">New seed</button>
+        </div>
+      </aside>
+
+      <section class="stage" aria-label="Simulation">
+        <canvas id="scene"></canvas>
+        <div class="status-pill"><span id="statusDot" class="dot"></span><span id="statusText">Paused</span></div>
+      </section>
+
+      <aside class="panel readout" aria-label="Readout">
+        <h2>Readout</h2>
+        <dl class="metrics">
+          <div class="metric"><dt>Blue share</dt><dd id="metricBlue">0%</dd></div>
+          <div class="metric"><dt id="metricSecondLabel">Segregated cliques</dt><dd id="metricSecond">0%</dd></div>
+          <div class="metric"><dt id="metricThirdLabel">Unhappy agents</dt><dd id="metricThird">0</dd></div>
+          <div class="metric"><dt>Updates</dt><dd id="metricUpdates">0</dd></div>
+        </dl>
+
+        <canvas id="chart" aria-label="History chart"></canvas>
+
+        <div class="legend">
+          <span><i class="swatch" style="background: var(--blue)"></i>Blue</span>
+          <span><i class="swatch" style="background: var(--red)"></i>Red</span>
+          <span><i class="swatch" style="background: var(--green)"></i>Segregated</span>
+          <span><i class="swatch" style="background: var(--amber)"></i>Active</span>
+        </div>
+
+        <div id="bars" class="bars" aria-label="Clique composition"></div>
+
+        <section class="interpretation" aria-label="Results interpretation">
+          <h3>Numerical interpretation</h3>
+          <ul id="interpretation" class="result-list"></ul>
+          <div id="formula" class="formula"></div>
+        </section>
+
+        <section class="experiment" aria-label="Numerical experiment">
+          <h3>Numerical experiment</h3>
+          <div class="experiment-controls">
+            <label for="replicates">Seeds</label>
+            <input id="replicates" type="number" min="5" max="200" step="5" value="40">
+          </div>
+          <div class="experiment-actions">
+            <button id="estimate" type="button">Estimate</button>
+            <button id="sweepTau" type="button">Sweep &tau;</button>
+          </div>
+          <div id="ensemble" class="ensemble">Run an estimate to aggregate this parameter point over many seeds.</div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const BLUE = "#2563eb";
+    const RED = "#e5484d";
+    const GREEN = "#1f9d72";
+    const AMBER = "#d89a19";
+    const INK = "#1f2937";
+
+    const els = {
+      scene: document.getElementById("scene"),
+      chart: document.getElementById("chart"),
+      tabs: Array.from(document.querySelectorAll(".tab")),
+      agents: document.getElementById("agents"),
+      cliques: document.getElementById("cliques"),
+      lambda: document.getElementById("lambda"),
+      tau: document.getElementById("tau"),
+      blue: document.getElementById("blue"),
+      speed: document.getElementById("speed"),
+      seed: document.getElementById("seed"),
+      tauControl: document.getElementById("tauControl"),
+      agentsOut: document.getElementById("agentsOut"),
+      cliquesOut: document.getElementById("cliquesOut"),
+      lambdaOut: document.getElementById("lambdaOut"),
+      tauOut: document.getElementById("tauOut"),
+      blueOut: document.getElementById("blueOut"),
+      speedOut: document.getElementById("speedOut"),
+      run: document.getElementById("run"),
+      step: document.getElementById("step"),
+      reset: document.getElementById("reset"),
+      newSeed: document.getElementById("newSeed"),
+      statusDot: document.getElementById("statusDot"),
+      statusText: document.getElementById("statusText"),
+      metricBlue: document.getElementById("metricBlue"),
+      metricSecond: document.getElementById("metricSecond"),
+      metricThird: document.getElementById("metricThird"),
+      metricUpdates: document.getElementById("metricUpdates"),
+      metricSecondLabel: document.getElementById("metricSecondLabel"),
+      metricThirdLabel: document.getElementById("metricThirdLabel"),
+      bars: document.getElementById("bars"),
+      interpretation: document.getElementById("interpretation"),
+      formula: document.getElementById("formula"),
+      replicates: document.getElementById("replicates"),
+      estimate: document.getElementById("estimate"),
+      sweepTau: document.getElementById("sweepTau"),
+      ensemble: document.getElementById("ensemble")
+    };
+
+    const sceneCtx = els.scene.getContext("2d");
+    const chartCtx = els.chart.getContext("2d");
+    let mode = "threshold";
+    let rng = mulberry32(42);
+    let state = null;
+    let view = { width: 900, height: 620, dpr: 1 };
+
+    function mulberry32(seed) {
+      let t = seed >>> 0;
+      return function random() {
+        t += 0x6D2B79F5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function percent(value) {
+      return `${Math.round(100 * value)}%`;
+    }
+
+    function shuffle(items) {
+      for (let i = items.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rng() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+      return items;
+    }
+
+    function configFromControls() {
+      return {
+        n: Number(els.agents.value),
+        m: Number(els.cliques.value),
+        lambda: Number(els.lambda.value),
+        tau: Number(els.tau.value),
+        pBlue: Number(els.blue.value),
+        speed: Number(els.speed.value),
+        seed: Math.max(1, Number(els.seed.value) || 1)
+      };
+    }
+
+    function syncControlLabels() {
+      els.agentsOut.textContent = els.agents.value;
+      els.cliquesOut.textContent = els.cliques.value;
+      els.lambdaOut.textContent = Number(els.lambda.value).toFixed(1);
+      els.tauOut.textContent = Number(els.tau.value).toFixed(2);
+      els.blueOut.textContent = percent(Number(els.blue.value));
+      els.speedOut.textContent = `${els.speed.value}x`;
+    }
+
+    function resizeCanvas() {
+      const rect = els.scene.getBoundingClientRect();
+      view.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      view.width = Math.max(320, rect.width);
+      view.height = Math.max(420, rect.height);
+      els.scene.width = Math.floor(view.width * view.dpr);
+      els.scene.height = Math.floor(view.height * view.dpr);
+      sceneCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+
+      const chartRect = els.chart.getBoundingClientRect();
+      els.chart.width = Math.floor(chartRect.width * view.dpr);
+      els.chart.height = Math.floor(chartRect.height * view.dpr);
+      chartCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+      updateGroupCenters();
+    }
+
+    function thresholdRects() {
+      const labelPad = 36;
+      const gap = 22;
+      if (view.width < 760) {
+        const topHeight = Math.max(230, (view.height - gap) * 0.48);
+        return {
+          cliques: { x: 0, y: labelPad, width: view.width, height: topHeight - labelPad },
+          network: { x: 0, y: topHeight + gap, width: view.width, height: view.height - topHeight - gap },
+          vertical: true
+        };
+      }
+
+      const leftWidth = clamp(view.width * 0.43, 310, view.width - 380);
+      return {
+        cliques: { x: 0, y: labelPad, width: leftWidth, height: view.height - labelPad },
+        network: { x: leftWidth + gap, y: labelPad, width: view.width - leftWidth - gap, height: view.height - labelPad },
+        vertical: false,
+        divider: leftWidth + gap / 2
+      };
+    }
+
+    function resetSimulation(startRunning = false) {
+      const config = configFromControls();
+      rng = mulberry32(config.seed);
+      state = {
+        config,
+        nodes: [],
+        groups: [],
+        edges: [],
+        tick: 0,
+        running: startRunning,
+        settled: false,
+        blocked: false,
+        lastMoves: 0,
+        lastFlips: 0,
+        history: [],
+        metrics: null
+      };
+
+      els.tauControl.classList.toggle("hidden", mode !== "threshold");
+      els.sweepTau.classList.toggle("hidden", mode !== "threshold");
+      els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : "Active edges";
+      els.metricThirdLabel.textContent = mode === "threshold" ? "Unhappy agents" : "Stop state";
+      els.ensemble.textContent = mode === "threshold"
+        ? "Run an estimate or tau sweep to aggregate this parameter point over many seeds."
+        : "Run an estimate to aggregate voter absorption over many seeds.";
+
+      for (let i = 0; i < config.m; i += 1) {
+        state.groups.push({ id: i, members: new Set(), cx: 0, cy: 0, blue: 0, red: 0 });
+      }
+      updateGroupCenters();
+
+      for (let i = 0; i < config.n; i += 1) {
+        state.nodes.push({
+          id: i,
+          color: rng() < config.pBlue ? 1 : 0,
+          groups: new Set(),
+          neighbors: new Set(),
+          x: view.width * (0.42 + rng() * 0.16),
+          y: view.height * (0.42 + rng() * 0.16),
+          vx: 0,
+          vy: 0,
+          unhappy: false
+        });
+      }
+
+      seedMemberships();
+      refreshGroupCounts();
+      buildGraph();
+      placeNodesNearGroups();
+      state.metrics = computeMetrics();
+      pushHistory();
+      updateReadout();
+      renderBars();
+      updateRunButton();
+    }
+
+    function seedMemberships() {
+      for (const node of state.nodes) {
+        for (const group of state.groups) {
+          if (rng() < state.config.lambda / state.config.m) addNodeToGroup(node, group);
+        }
+      }
+    }
+
+    function addNodeToGroup(node, group) {
+      if (node.groups.has(group.id)) return;
+      node.groups.add(group.id);
+      group.members.add(node.id);
+    }
+
+    function removeNodeFromGroup(node, group) {
+      node.groups.delete(group.id);
+      group.members.delete(node.id);
+    }
+
+    function refreshGroupCounts() {
+      for (const group of state.groups) {
+        let blue = 0;
+        for (const id of group.members) {
+          blue += state.nodes[id].color;
+        }
+        group.blue = blue;
+        group.red = group.members.size - blue;
+      }
+    }
+
+    function recountGroup(group) {
+      let blue = 0;
+      for (const id of group.members) {
+        blue += state.nodes[id].color;
+      }
+      group.blue = blue;
+      group.red = group.members.size - blue;
+    }
+
+    function buildGraph() {
+      for (const node of state.nodes) node.neighbors = new Set();
+      const edgeMap = new Map();
+
+      for (const group of state.groups) {
+        const members = Array.from(group.members);
+        for (let i = 0; i < members.length; i += 1) {
+          for (let j = i + 1; j < members.length; j += 1) {
+            const a = members[i];
+            const b = members[j];
+            const lo = Math.min(a, b);
+            const hi = Math.max(a, b);
+            const key = `${lo}:${hi}`;
+            if (!edgeMap.has(key)) {
+              edgeMap.set(key, { a: lo, b: hi });
+              state.nodes[lo].neighbors.add(hi);
+              state.nodes[hi].neighbors.add(lo);
+            }
+          }
+        }
+      }
+
+      state.edges = Array.from(edgeMap.values());
+    }
+
+    function updateGroupCenters() {
+      if (!state || !state.groups) return;
+      if (mode === "threshold") {
+        const rects = thresholdRects();
+        const cliqueRect = rects.cliques;
+        const networkRect = rects.network;
+        const count = Math.max(1, state.groups.length);
+        const columns = Math.max(1, Math.ceil(Math.sqrt(count * (cliqueRect.width / cliqueRect.height))));
+        const rows = Math.ceil(count / columns);
+        const padX = Math.min(34, cliqueRect.width * 0.08);
+        const padY = Math.min(34, cliqueRect.height * 0.08);
+        const cellW = (cliqueRect.width - padX * 2) / columns;
+        const cellH = (cliqueRect.height - padY * 2) / rows;
+        for (const group of state.groups) {
+          const column = group.id % columns;
+          const row = Math.floor(group.id / columns);
+          group.cx = cliqueRect.x + padX + cellW * (column + 0.5);
+          group.cy = cliqueRect.y + padY + cellH * (row + 0.5);
+          group.maxRadius = Math.max(18, Math.min(cellW, cellH) * 0.38);
+
+          const angle = -Math.PI / 2 + (Math.PI * 2 * group.id) / count;
+          group.nx = networkRect.x + networkRect.width / 2 + Math.cos(angle) * networkRect.width * 0.32;
+          group.ny = networkRect.y + networkRect.height / 2 + Math.sin(angle) * networkRect.height * 0.30;
+        }
+        return;
+      }
+
+      const cx = view.width / 2;
+      const cy = view.height / 2;
+      const rx = Math.max(120, view.width * 0.36);
+      const ry = Math.max(120, view.height * 0.34);
+      const count = Math.max(1, state.groups.length);
+      for (const group of state.groups) {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * group.id) / count;
+        group.cx = cx + Math.cos(angle) * rx;
+        group.cy = cy + Math.sin(angle) * ry;
+        group.maxRadius = undefined;
+        group.nx = group.cx;
+        group.ny = group.cy;
+      }
+    }
+
+    function nodeTarget(node) {
+      if (node.groups.size === 0) {
+        if (mode === "threshold") {
+          const network = thresholdRects().network;
+          return { x: network.x + network.width / 2, y: network.y + network.height / 2 };
+        }
+        return { x: view.width / 2, y: view.height / 2 };
+      }
+
+      let x = 0;
+      let y = 0;
+      for (const groupId of node.groups) {
+        const group = state.groups[groupId];
+        x += mode === "threshold" ? group.nx : group.cx;
+        y += mode === "threshold" ? group.ny : group.cy;
+      }
+      x /= node.groups.size;
+      y /= node.groups.size;
+
+      const jitterAngle = ((node.id * 97) % 360) * Math.PI / 180;
+      const jitter = mode === "voter" ? 16 : 20;
+      x += Math.cos(jitterAngle) * jitter;
+      y += Math.sin(jitterAngle) * jitter;
+
+      if (mode === "voter") {
+        x += node.color ? -16 : 16;
+      }
+
+      return { x, y };
+    }
+
+    function placeNodesNearGroups() {
+      for (const node of state.nodes) {
+        const target = nodeTarget(node);
+        node.x = target.x + (rng() - 0.5) * 42;
+        node.y = target.y + (rng() - 0.5) * 42;
+      }
+    }
+
+    function sameShare(node, group) {
+      if (group.members.size <= 1) return 1;
+      return node.color ? group.blue / group.members.size : group.red / group.members.size;
+    }
+
+    function shareIfJoined(node, group) {
+      const total = group.members.size + (node.groups.has(group.id) ? 0 : 1);
+      if (total <= 1) return 1;
+      const same = (node.color ? group.blue : group.red) + (node.groups.has(group.id) ? 0 : 1);
+      return same / total;
+    }
+
+    function collectUnhappyPairs() {
+      const pairs = [];
+      for (const node of state.nodes) {
+        node.unhappy = false;
+        for (const groupId of node.groups) {
+          const group = state.groups[groupId];
+          if (sameShare(node, group) + 1e-9 < state.config.tau) {
+            node.unhappy = true;
+            pairs.push([node, group]);
+          }
+        }
+      }
+      return pairs;
+    }
+
+    function chooseTargetGroup(node) {
+      const preferred = [];
+
+      for (const group of state.groups) {
+        if (node.groups.has(group.id)) continue;
+        const share = shareIfJoined(node, group);
+        const balance = 1 / Math.sqrt(group.members.size + 1);
+        const entry = { group, score: share + 0.08 * balance + rng() * 0.015 };
+        if (share + 1e-9 >= state.config.tau) preferred.push(entry);
+      }
+
+      const pool = preferred
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 4);
+      if (!pool.length) return null;
+      return pool[Math.floor(rng() * pool.length)].group;
+    }
+
+    function relocateMembership(node, fromGroup) {
+      removeNodeFromGroup(node, fromGroup);
+      recountGroup(fromGroup);
+      const target = chooseTargetGroup(node);
+      if (target) {
+        addNodeToGroup(node, target);
+        recountGroup(target);
+        return true;
+      }
+      addNodeToGroup(node, fromGroup);
+      recountGroup(fromGroup);
+      return false;
+    }
+
+    function stepThreshold() {
+      if (state.settled) return;
+      refreshGroupCounts();
+      const pairs = shuffle(collectUnhappyPairs());
+      const maxMoves = Math.max(1, state.config.speed * 4);
+      let moves = 0;
+
+      for (let i = 0; i < pairs.length && moves < maxMoves; i += 1) {
+        const [node, group] = pairs[i];
+        if (node.groups.has(group.id) && sameShare(node, group) + 1e-9 < state.config.tau) {
+          if (relocateMembership(node, group)) moves += 1;
+        }
+      }
+
+      state.tick += moves || 1;
+      state.lastMoves = moves;
+      if (moves > 0) buildGraph();
+      state.metrics = computeMetrics();
+
+      if (state.metrics.unhappyAgents === 0) {
+        state.settled = true;
+        state.running = false;
+      }
+      if (pairs.length > 0 && moves === 0 && !state.settled) {
+        state.settled = true;
+        state.blocked = true;
+        state.running = false;
+      }
+      pushHistory();
+      updateReadout();
+    }
+
+    function stepVoter() {
+      if (state.settled) return;
+      const events = Math.max(1, state.config.speed * 18);
+      let flips = 0;
+
+      for (let i = 0; i < events; i += 1) {
+        const node = state.nodes[Math.floor(rng() * state.nodes.length)];
+        if (!node.neighbors.size) continue;
+        const neighbors = Array.from(node.neighbors);
+        const other = state.nodes[neighbors[Math.floor(rng() * neighbors.length)]];
+        if (node.color !== other.color) {
+          node.color = other.color;
+          flips += 1;
+        }
+      }
+
+      state.tick += events;
+      state.lastFlips = flips;
+      refreshGroupCounts();
+      state.metrics = computeMetrics();
+      if (state.metrics.activeEdges === 0) {
+        state.settled = true;
+        state.running = false;
+      }
+      pushHistory();
+      updateReadout();
+    }
+
+    function computeMetrics() {
+      refreshGroupCounts();
+      const blueCount = state.nodes.reduce((sum, node) => sum + node.color, 0);
+      const blueShare = blueCount / state.nodes.length;
+      const possibleEdges = state.nodes.length > 1 ? state.nodes.length * (state.nodes.length - 1) / 2 : 1;
+      const edgeDensity = state.edges.length / possibleEdges;
+      const isolated = state.nodes.filter(node => node.neighbors.size === 0).length;
+      const memberships = state.groups.reduce((sum, group) => sum + group.members.size, 0);
+      const nonemptyGroups = state.groups.filter(group => group.members.size > 0).length;
+      const meanGroupSize = state.groups.length ? memberships / state.groups.length : 0;
+      const expectedGroupSize = state.config.n * state.config.lambda / state.config.m;
+      let activeEdges = 0;
+      for (const edge of state.edges) {
+        if (state.nodes[edge.a].color !== state.nodes[edge.b].color) activeEdges += 1;
+      }
+
+      if (mode === "threshold") {
+        const pairs = collectUnhappyPairs();
+        let segregated = 0;
+        let mixedGroups = 0;
+        for (const group of state.groups) {
+          if (group.members.size > 0) {
+            if (group.blue === 0 || group.red === 0) segregated += 1;
+            else mixedGroups += 1;
+          }
+        }
+        const unhappyAgents = state.nodes.filter(node => node.unhappy).length;
+        return {
+          blueShare,
+          segregatedShare: nonemptyGroups ? segregated / nonemptyGroups : 1,
+          segregatedGroups: segregated,
+          mixedGroups,
+          nonemptyGroups,
+          unhappy: pairs.length,
+          unhappyAgents,
+          unhappyShare: memberships ? pairs.length / memberships : 0,
+          memberships,
+          meanGroupSize,
+          expectedGroupSize,
+          edgeDensity,
+          isolated,
+          activeEdges,
+          activeShare: state.edges.length ? activeEdges / state.edges.length : 0,
+          absorbedText: unhappyAgents === 0 ? "everyone happy" : "moving"
+        };
+      }
+
+      const consensus = blueCount === 0 ? "red consensus" : blueCount === state.nodes.length ? "blue consensus" : "local consensus";
+      return {
+        blueShare,
+        segregatedShare: 0,
+        unhappy: 0,
+        unhappyAgents: 0,
+        unhappyShare: 0,
+        memberships,
+        meanGroupSize,
+        expectedGroupSize,
+        edgeDensity,
+        isolated,
+        activeEdges,
+        activeShare: state.edges.length ? activeEdges / state.edges.length : 0,
+        absorbedText: activeEdges === 0 ? consensus : "copying"
+      };
+    }
+
+    function pushHistory() {
+      if (!state.metrics) return;
+      state.history.push({
+        blueShare: state.metrics.blueShare,
+        segregatedShare: state.metrics.segregatedShare,
+        unhappyShare: state.metrics.unhappyShare,
+        activeShare: state.metrics.activeShare || 0
+      });
+      if (state.history.length > 260) state.history.shift();
+    }
+
+    function updateReadout() {
+      const metrics = state.metrics || computeMetrics();
+      els.metricBlue.textContent = percent(metrics.blueShare);
+      els.metricUpdates.textContent = String(state.tick);
+
+      if (mode === "threshold") {
+        els.metricSecond.textContent = percent(metrics.segregatedShare);
+        els.metricThird.textContent = String(metrics.unhappyAgents);
+        setStatus(
+          state.settled ? `Stopped: ${state.blocked ? "no happy move" : "everyone happy"}` : state.running ? `Moving ${state.lastMoves}` : "Paused",
+          state.settled ? "done" : state.running ? "running" : ""
+        );
+      } else {
+        els.metricSecond.textContent = String(metrics.activeEdges);
+        els.metricThird.textContent = metrics.absorbedText;
+        setStatus(
+          state.settled ? `Stopped: ${metrics.absorbedText}` : state.running ? `Flips ${state.lastFlips}` : "Paused",
+          state.settled ? "done" : state.running ? "running" : ""
+        );
+      }
+      updateInterpretation(metrics);
+      updateRunButton();
+    }
+
+    function number(value, digits = 2) {
+      return Number.isFinite(value) ? value.toFixed(digits) : "0.00";
+    }
+
+    function renderResultItems(items) {
+      els.interpretation.innerHTML = items.map(item => `<li>${item}</li>`).join("");
+    }
+
+    function updateInterpretation(metrics) {
+      const cfg = state.config;
+      const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
+      const denominator = cfg.n > 1 ? cfg.n * (cfg.n - 1) / 2 : 1;
+      const stopText = state.settled
+        ? state.blocked ? "stopped with no legal happy move" : `absorbed after ${state.tick} updates`
+        : state.running ? "running" : "paused";
+
+      els.formula.innerHTML = `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Projected density |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`;
+
+      if (mode === "threshold") {
+        renderResultItems([
+          `<strong>Stopping statistic:</strong> ${stopText}; ${metrics.unhappyAgents} unhappy agents and ${metrics.unhappy} unhappy memberships remain.`,
+          `<strong>Segregation observable:</strong> ${metrics.segregatedGroups}/${metrics.nonemptyGroups} nonempty groups are monochromatic (${percent(metrics.segregatedShare)}); ${metrics.mixedGroups} mixed groups remain.`,
+          `<strong>Network observable:</strong> ${metrics.activeEdges} opposite-colour projected edges remain (${percent(metrics.activeShare)} of projected edges); ${metrics.isolated} isolated members.`,
+          `<strong>Model use:</strong> across seeds, record final segregation share, unhappy agents, and stopping time as empirical estimates for the threshold &tau; at which segregation becomes sharp.`
+        ]);
+      } else {
+        const globalConsensus = metrics.blueShare === 0 || metrics.blueShare === 1;
+        renderResultItems([
+          `<strong>Absorbing statistic:</strong> ${stopText}; ${metrics.activeEdges} active opposite-colour edges remain.`,
+          `<strong>Consensus observable:</strong> final blue share is ${percent(metrics.blueShare)}, giving ${globalConsensus ? "global consensus" : "component-wise local consensus"} on this RIG.`,
+          `<strong>Network observable:</strong> ${state.edges.length}/${Math.round(denominator)} possible projected edges are present; ${metrics.isolated} isolated members.`,
+          `<strong>Model use:</strong> across seeds, estimate fixation probability, final blue share, and absorption time as functions of &lambda; and p<sub>B</sub>.`
+        ]);
+      }
+    }
+
+    function shuffleWith(random, items) {
+      for (let i = items.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+      return items;
+    }
+
+    function createBatchModel(config, seed) {
+      const random = mulberry32(seed);
+      const nodes = [];
+      const groups = [];
+      for (let i = 0; i < config.n; i += 1) {
+        nodes.push({ id: i, color: random() < config.pBlue ? 1 : 0, groups: new Set(), unhappy: false });
+      }
+      for (let j = 0; j < config.m; j += 1) {
+        groups.push({ id: j, members: new Set(), blue: 0, red: 0 });
+      }
+      for (const node of nodes) {
+        for (const group of groups) {
+          if (random() < config.lambda / config.m) {
+            node.groups.add(group.id);
+            group.members.add(node.id);
+          }
+        }
+      }
+      const model = { config, nodes, groups, edges: [], adjacency: [], random };
+      recountBatchGroups(model);
+      buildBatchGraph(model);
+      return model;
+    }
+
+    function recountBatchGroups(model) {
+      for (const group of model.groups) {
+        let blue = 0;
+        for (const id of group.members) blue += model.nodes[id].color;
+        group.blue = blue;
+        group.red = group.members.size - blue;
+      }
+    }
+
+    function recountBatchGroup(model, group) {
+      let blue = 0;
+      for (const id of group.members) blue += model.nodes[id].color;
+      group.blue = blue;
+      group.red = group.members.size - blue;
+    }
+
+    function buildBatchGraph(model) {
+      const edgeMap = new Map();
+      const adjacency = Array.from({ length: model.nodes.length }, () => new Set());
+      for (const group of model.groups) {
+        const members = Array.from(group.members);
+        for (let i = 0; i < members.length; i += 1) {
+          for (let j = i + 1; j < members.length; j += 1) {
+            const a = members[i];
+            const b = members[j];
+            const lo = Math.min(a, b);
+            const hi = Math.max(a, b);
+            const key = `${lo}:${hi}`;
+            if (!edgeMap.has(key)) {
+              edgeMap.set(key, { a: lo, b: hi });
+              adjacency[lo].add(hi);
+              adjacency[hi].add(lo);
+            }
+          }
+        }
+      }
+      model.edges = Array.from(edgeMap.values());
+      model.adjacency = adjacency.map(neighbors => Array.from(neighbors));
+    }
+
+    function batchSameShare(model, node, group) {
+      if (group.members.size <= 1) return 1;
+      return node.color ? group.blue / group.members.size : group.red / group.members.size;
+    }
+
+    function batchShareIfJoined(node, group) {
+      const total = group.members.size + (node.groups.has(group.id) ? 0 : 1);
+      if (total <= 1) return 1;
+      const same = (node.color ? group.blue : group.red) + (node.groups.has(group.id) ? 0 : 1);
+      return same / total;
+    }
+
+    function batchCollectUnhappyPairs(model, tau) {
+      const pairs = [];
+      for (const node of model.nodes) {
+        node.unhappy = false;
+        for (const groupId of node.groups) {
+          const group = model.groups[groupId];
+          if (batchSameShare(model, node, group) + 1e-9 < tau) {
+            node.unhappy = true;
+            pairs.push([node, group]);
+          }
+        }
+      }
+      return pairs;
+    }
+
+    function batchChooseTarget(model, node, tau) {
+      const preferred = [];
+      for (const group of model.groups) {
+        if (node.groups.has(group.id)) continue;
+        const share = batchShareIfJoined(node, group);
+        const balance = 1 / Math.sqrt(group.members.size + 1);
+        if (share + 1e-9 >= tau) preferred.push({ group, score: share + 0.08 * balance + model.random() * 0.015 });
+      }
+      preferred.sort((a, b) => b.score - a.score);
+      const pool = preferred.slice(0, 4);
+      return pool.length ? pool[Math.floor(model.random() * pool.length)].group : null;
+    }
+
+    function batchThresholdMetrics(model, tau, updates, blocked, maxedOut) {
+      buildBatchGraph(model);
+      const pairs = batchCollectUnhappyPairs(model, tau);
+      const blueCount = model.nodes.reduce((sum, node) => sum + node.color, 0);
+      const memberships = model.groups.reduce((sum, group) => sum + group.members.size, 0);
+      const nonemptyGroups = model.groups.filter(group => group.members.size > 0).length;
+      let segregatedGroups = 0;
+      let mixedGroups = 0;
+      for (const group of model.groups) {
+        if (group.members.size > 0) {
+          if (group.blue === 0 || group.red === 0) segregatedGroups += 1;
+          else mixedGroups += 1;
+        }
+      }
+      let activeEdges = 0;
+      for (const edge of model.edges) {
+        if (model.nodes[edge.a].color !== model.nodes[edge.b].color) activeEdges += 1;
+      }
+      const possibleEdges = model.nodes.length > 1 ? model.nodes.length * (model.nodes.length - 1) / 2 : 1;
+      return {
+        happy: pairs.length === 0,
+        blocked,
+        maxedOut,
+        updates,
+        blueShare: blueCount / model.nodes.length,
+        segregatedShare: nonemptyGroups ? segregatedGroups / nonemptyGroups : 1,
+        segregatedGroups,
+        mixedGroups,
+        unhappyAgents: model.nodes.filter(node => node.unhappy).length,
+        unhappyMemberships: pairs.length,
+        activeShare: model.edges.length ? activeEdges / model.edges.length : 0,
+        edgeDensity: model.edges.length / possibleEdges,
+        isolated: model.adjacency.filter(neighbors => neighbors.length === 0).length,
+        meanGroupSize: model.groups.length ? memberships / model.groups.length : 0
+      };
+    }
+
+    function simulateThresholdBatch(config, seed) {
+      const model = createBatchModel(config, seed);
+      const maxUpdates = Math.max(4000, config.n * config.m * 8);
+      let updates = 0;
+      let blocked = false;
+
+      while (updates < maxUpdates) {
+        const pairs = shuffleWith(model.random, batchCollectUnhappyPairs(model, config.tau));
+        if (!pairs.length) return batchThresholdMetrics(model, config.tau, updates, false, false);
+
+        let moved = false;
+        for (const [node, group] of pairs) {
+          if (!node.groups.has(group.id) || batchSameShare(model, node, group) + 1e-9 >= config.tau) continue;
+          const target = batchChooseTarget(model, node, config.tau);
+          if (!target) continue;
+          node.groups.delete(group.id);
+          group.members.delete(node.id);
+          recountBatchGroup(model, group);
+          node.groups.add(target.id);
+          target.members.add(node.id);
+          recountBatchGroup(model, target);
+          updates += 1;
+          moved = true;
+          break;
+        }
+
+        if (!moved) {
+          blocked = true;
+          break;
+        }
+      }
+      return batchThresholdMetrics(model, config.tau, updates, blocked, updates >= maxUpdates);
+    }
+
+    function countActiveBatchEdges(model) {
+      let active = 0;
+      for (const edge of model.edges) {
+        if (model.nodes[edge.a].color !== model.nodes[edge.b].color) active += 1;
+      }
+      return active;
+    }
+
+    function simulateVoterBatch(config, seed) {
+      const model = createBatchModel(config, seed);
+      let activeEdges = countActiveBatchEdges(model);
+      const maxEvents = Math.max(10000, config.n * config.n * 16);
+      let events = 0;
+      let flips = 0;
+
+      while (activeEdges > 0 && events < maxEvents) {
+        const node = model.nodes[Math.floor(model.random() * model.nodes.length)];
+        const neighbors = model.adjacency[node.id];
+        events += 1;
+        if (!neighbors.length) continue;
+        const source = model.nodes[neighbors[Math.floor(model.random() * neighbors.length)]];
+        if (source.color === node.color) continue;
+
+        const oldColor = node.color;
+        const newColor = source.color;
+        for (const neighborId of neighbors) {
+          const neighborColor = model.nodes[neighborId].color;
+          const before = oldColor !== neighborColor ? 1 : 0;
+          const after = newColor !== neighborColor ? 1 : 0;
+          activeEdges += after - before;
+        }
+        node.color = newColor;
+        flips += 1;
+      }
+
+      const blueCount = model.nodes.reduce((sum, node) => sum + node.color, 0);
+      const possibleEdges = model.nodes.length > 1 ? model.nodes.length * (model.nodes.length - 1) / 2 : 1;
+      const memberships = model.groups.reduce((sum, group) => sum + group.members.size, 0);
+      return {
+        absorbed: activeEdges === 0,
+        globalBlue: activeEdges === 0 && blueCount === model.nodes.length,
+        globalRed: activeEdges === 0 && blueCount === 0,
+        localConsensus: activeEdges === 0 && blueCount > 0 && blueCount < model.nodes.length,
+        events,
+        flips,
+        blueShare: blueCount / model.nodes.length,
+        activeEdges,
+        edgeDensity: model.edges.length / possibleEdges,
+        isolated: model.adjacency.filter(neighbors => neighbors.length === 0).length,
+        meanGroupSize: model.groups.length ? memberships / model.groups.length : 0
+      };
+    }
+
+    function replicateCount(limit = 200) {
+      const value = Math.floor(Number(els.replicates.value) || 40);
+      return clamp(value, 5, limit);
+    }
+
+    function summarize(results, key) {
+      const values = results.map(result => Number(result[key]) || 0);
+      const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const variance = values.length > 1
+        ? values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (values.length - 1)
+        : 0;
+      return { avg, se: Math.sqrt(variance / values.length) };
+    }
+
+    function estimateText(summary, digits = 2, scale = 1, suffix = "") {
+      return `${number(summary.avg * scale, digits)}${suffix} +/- ${number(summary.se * scale, digits)}`;
+    }
+
+    function tableHtml(headers, rows) {
+      return `<table class="estimate-table"><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    }
+
+    function renderCurrentEstimate(results, config, estimateMode) {
+      if (estimateMode === "threshold") {
+        const rows = [
+          ["P(happy stop)", estimateText(summarize(results, "happy"), 1, 100, "%")],
+          ["P(no happy move)", estimateText(summarize(results, "blocked"), 1, 100, "%")],
+          ["E[segregated share]", estimateText(summarize(results, "segregatedShare"), 1, 100, "%")],
+          ["E[active-edge share]", estimateText(summarize(results, "activeShare"), 1, 100, "%")],
+          ["E[T_stop]", estimateText(summarize(results, "updates"), 1)],
+          ["E[unhappy agents]", estimateText(summarize(results, "unhappyAgents"), 2)],
+          ["P(max updates)", estimateText(summarize(results, "maxedOut"), 1, 100, "%")]
+        ];
+        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds at &tau;=${number(config.tau, 2)}. Values show mean +/- Monte Carlo standard error.${tableHtml(["Observable", "Estimate"], rows)}`;
+      } else {
+        const rows = [
+          ["P(absorbed)", estimateText(summarize(results, "absorbed"), 1, 100, "%")],
+          ["P(blue consensus)", estimateText(summarize(results, "globalBlue"), 1, 100, "%")],
+          ["P(red consensus)", estimateText(summarize(results, "globalRed"), 1, 100, "%")],
+          ["P(local consensus)", estimateText(summarize(results, "localConsensus"), 1, 100, "%")],
+          ["E[final blue share]", estimateText(summarize(results, "blueShare"), 1, 100, "%")],
+          ["E[T_abs]", estimateText(summarize(results, "events"), 1)]
+        ];
+        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds. Values show mean +/- Monte Carlo standard error.${tableHtml(["Observable", "Estimate"], rows)}`;
+      }
+    }
+
+    function runCurrentEstimate() {
+      const config = configFromControls();
+      const estimateMode = mode;
+      const reps = replicateCount(200);
+      els.ensemble.textContent = "Calculating seeded ensemble...";
+      setExperimentBusy(true);
+      setTimeout(() => {
+        const results = [];
+        for (let i = 0; i < reps; i += 1) {
+          const seed = config.seed + 1009 * i;
+          results.push(estimateMode === "threshold" ? simulateThresholdBatch(config, seed) : simulateVoterBatch(config, seed));
+        }
+        renderCurrentEstimate(results, config, estimateMode);
+        setExperimentBusy(false);
+      }, 20);
+    }
+
+    function runTauSweep() {
+      const baseConfig = configFromControls();
+      const reps = replicateCount(60);
+      const taus = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90];
+      els.ensemble.textContent = "Calculating tau sweep...";
+      setExperimentBusy(true);
+      setTimeout(() => {
+        const rows = [];
+        for (const tau of taus) {
+          const config = { ...baseConfig, tau };
+          const results = [];
+          for (let i = 0; i < reps; i += 1) {
+            results.push(simulateThresholdBatch(config, config.seed + 1009 * i + Math.round(tau * 10000)));
+          }
+          rows.push([
+            number(tau, 2),
+            estimateText(summarize(results, "happy"), 0, 100, "%"),
+            estimateText(summarize(results, "segregatedShare"), 0, 100, "%"),
+            estimateText(summarize(results, "updates"), 0),
+            estimateText(summarize(results, "blocked"), 0, 100, "%")
+          ]);
+        }
+        els.ensemble.innerHTML = `Threshold sweep with ${reps} seeds per &tau; value. Use the transition in E[segregated share] and P(happy stop) as a numerical proxy for a sharp-segregation threshold.${tableHtml(["&tau;", "P happy", "E[S]", "E[T]", "P blocked"], rows)}`;
+        setExperimentBusy(false);
+      }, 20);
+    }
+
+    function setExperimentBusy(isBusy) {
+      els.estimate.disabled = isBusy;
+      els.sweepTau.disabled = isBusy;
+      els.replicates.disabled = isBusy;
+    }
+
+    function setStatus(text, kind) {
+      els.statusText.textContent = text;
+      els.statusDot.className = `dot ${kind || ""}`.trim();
+    }
+
+    function updateRunButton() {
+      els.run.textContent = state && state.running ? "Pause" : "Run";
+    }
+
+    function relaxLayout() {
+      const attraction = mode === "threshold" ? 0.018 : 0.012;
+      const damping = 0.84;
+      const radius = state.config.n > 140 ? 9 : 11;
+
+      for (const node of state.nodes) {
+        const target = nodeTarget(node);
+        node.vx += (target.x - node.x) * attraction;
+        node.vy += (target.y - node.y) * attraction;
+      }
+
+      for (let i = 0; i < state.nodes.length; i += 1) {
+        const a = state.nodes[i];
+        for (let j = i + 1; j < state.nodes.length; j += 1) {
+          const b = state.nodes[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist2 = dx * dx + dy * dy;
+          const minDist = radius;
+          if (dist2 > 0.01 && dist2 < minDist * minDist) {
+            const dist = Math.sqrt(dist2);
+            const force = (minDist - dist) / minDist * 0.18;
+            const fx = dx / dist * force;
+            const fy = dy / dist * force;
+            a.vx -= fx;
+            a.vy -= fy;
+            b.vx += fx;
+            b.vy += fy;
+          }
+        }
+      }
+
+      const bounds = mode === "threshold"
+        ? thresholdRects().network
+        : { x: 0, y: 0, width: view.width, height: view.height };
+
+      for (const node of state.nodes) {
+        node.vx *= damping;
+        node.vy *= damping;
+        node.x = clamp(node.x + node.vx, bounds.x + 18, bounds.x + bounds.width - 18);
+        node.y = clamp(node.y + node.vy, bounds.y + 18, bounds.y + bounds.height - 18);
+      }
+    }
+
+    function renderScene() {
+      sceneCtx.clearRect(0, 0, view.width, view.height);
+      drawBackdrop();
+
+      if (mode === "threshold") {
+        drawGroups();
+        drawCliqueMembershipDots();
+        drawEdges();
+        drawNodes();
+      } else {
+        drawEdges();
+        drawNodes();
+      }
+
+      if (state.settled) drawEndingLabel();
+      renderChart();
+    }
+
+    function drawBackdrop() {
+      sceneCtx.save();
+      sceneCtx.fillStyle = "#fbfcfe";
+      sceneCtx.fillRect(0, 0, view.width, view.height);
+      sceneCtx.strokeStyle = "rgba(217, 222, 232, 0.42)";
+      sceneCtx.lineWidth = 1;
+      const gap = 34;
+      for (let x = 0; x < view.width; x += gap) {
+        sceneCtx.beginPath();
+        sceneCtx.moveTo(x, 0);
+        sceneCtx.lineTo(x, view.height);
+        sceneCtx.stroke();
+      }
+      for (let y = 0; y < view.height; y += gap) {
+        sceneCtx.beginPath();
+        sceneCtx.moveTo(0, y);
+        sceneCtx.lineTo(view.width, y);
+        sceneCtx.stroke();
+      }
+      sceneCtx.restore();
+
+      if (mode === "threshold") drawThresholdPanes();
+    }
+
+    function drawThresholdPanes() {
+      const rects = thresholdRects();
+      sceneCtx.save();
+      sceneCtx.strokeStyle = "rgba(217, 222, 232, 0.95)";
+      sceneCtx.lineWidth = 1;
+      if (rects.vertical) {
+        sceneCtx.beginPath();
+        sceneCtx.moveTo(16, rects.network.y - 11);
+        sceneCtx.lineTo(view.width - 16, rects.network.y - 11);
+        sceneCtx.stroke();
+      } else {
+        sceneCtx.beginPath();
+        sceneCtx.moveTo(rects.divider, 16);
+        sceneCtx.lineTo(rects.divider, view.height - 16);
+        sceneCtx.stroke();
+      }
+      drawPaneLabel(Math.max(rects.cliques.x + 18, rects.cliques.x + rects.cliques.width - 96), rects.cliques.y - 8, "Cliques");
+      drawPaneLabel(rects.network.x + 18, rects.network.y - 8, "Network");
+      sceneCtx.restore();
+    }
+
+    function drawPaneLabel(x, y, text) {
+      sceneCtx.save();
+      sceneCtx.font = "700 13px Inter, system-ui, sans-serif";
+      const width = sceneCtx.measureText(text).width + 20;
+      roundRect(sceneCtx, x, y - 19, width, 28, 8);
+      sceneCtx.fillStyle = "rgba(255, 255, 255, 0.88)";
+      sceneCtx.fill();
+      sceneCtx.strokeStyle = "rgba(217, 222, 232, 0.9)";
+      sceneCtx.stroke();
+      sceneCtx.fillStyle = "#344054";
+      sceneCtx.fillText(text, x + 10, y);
+      sceneCtx.restore();
+    }
+
+    function groupRadius(group) {
+      const radius = 17 + Math.sqrt(group.members.size) * 4.6;
+      return group.maxRadius ? Math.min(radius, group.maxRadius) : radius;
+    }
+
+    function drawGroups() {
+      refreshGroupCounts();
+      for (const group of state.groups) {
+        const size = group.members.size;
+        const radius = groupRadius(group);
+        if (size === 0) {
+          sceneCtx.save();
+          sceneCtx.beginPath();
+          sceneCtx.arc(group.cx, group.cy, radius, 0, Math.PI * 2);
+          sceneCtx.fillStyle = "rgba(102, 112, 133, 0.04)";
+          sceneCtx.fill();
+          sceneCtx.strokeStyle = "rgba(102, 112, 133, 0.22)";
+          sceneCtx.lineWidth = 1;
+          sceneCtx.setLineDash([4, 5]);
+          sceneCtx.stroke();
+          sceneCtx.restore();
+          continue;
+        }
+        const total = Math.max(1, size);
+        const blueAngle = (group.blue / total) * Math.PI * 2;
+
+        sceneCtx.save();
+        sceneCtx.globalAlpha = 0.95;
+        sceneCtx.beginPath();
+        sceneCtx.moveTo(group.cx, group.cy);
+        sceneCtx.arc(group.cx, group.cy, radius, -Math.PI / 2, -Math.PI / 2 + blueAngle);
+        sceneCtx.closePath();
+        sceneCtx.fillStyle = "rgba(37, 99, 235, 0.18)";
+        sceneCtx.fill();
+
+        sceneCtx.beginPath();
+        sceneCtx.moveTo(group.cx, group.cy);
+        sceneCtx.arc(group.cx, group.cy, radius, -Math.PI / 2 + blueAngle, Math.PI * 1.5);
+        sceneCtx.closePath();
+        sceneCtx.fillStyle = "rgba(229, 72, 77, 0.18)";
+        sceneCtx.fill();
+
+        sceneCtx.beginPath();
+        sceneCtx.arc(group.cx, group.cy, radius, 0, Math.PI * 2);
+        sceneCtx.strokeStyle = size && (group.blue === 0 || group.red === 0) ? "rgba(31, 157, 114, 0.65)" : "rgba(102, 112, 133, 0.28)";
+        sceneCtx.lineWidth = size && (group.blue === 0 || group.red === 0) ? 2 : 1;
+        sceneCtx.stroke();
+        sceneCtx.restore();
+      }
+    }
+
+    function membershipDotPosition(group, nodeId, index, count) {
+      if (count <= 1) return { x: group.cx, y: group.cy };
+      const usableRadius = Math.max(4, groupRadius(group) - 8);
+      const angle = index * Math.PI * (3 - Math.sqrt(5)) + group.id * 0.41;
+      const radius = usableRadius * Math.sqrt((index + 0.5) / count);
+      return {
+        x: group.cx + Math.cos(angle) * radius,
+        y: group.cy + Math.sin(angle) * radius
+      };
+    }
+
+    function drawCliqueMembershipDots() {
+      sceneCtx.save();
+      for (const group of state.groups) {
+        const members = Array.from(group.members).sort((a, b) => a - b);
+        members.forEach((nodeId, index) => {
+          const node = state.nodes[nodeId];
+          const point = membershipDotPosition(group, nodeId, index, members.length);
+          const unhappyHere = sameShare(node, group) + 1e-9 < state.config.tau;
+          sceneCtx.beginPath();
+          sceneCtx.arc(point.x, point.y, unhappyHere ? 6.8 : 5.4, 0, Math.PI * 2);
+          sceneCtx.fillStyle = unhappyHere ? "rgba(216, 154, 25, 0.34)" : "rgba(255, 255, 255, 0.95)";
+          sceneCtx.fill();
+
+          sceneCtx.beginPath();
+          sceneCtx.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
+          sceneCtx.fillStyle = node.color ? BLUE : RED;
+          sceneCtx.fill();
+          sceneCtx.lineWidth = 1;
+          sceneCtx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+          sceneCtx.stroke();
+        });
+      }
+      sceneCtx.restore();
+    }
+
+    function drawEdges() {
+      sceneCtx.save();
+      sceneCtx.lineWidth = state.config.n > 140 ? 0.55 : 0.75;
+      for (const edge of state.edges) {
+        const a = state.nodes[edge.a];
+        const b = state.nodes[edge.b];
+        const active = a.color !== b.color;
+        if (mode === "threshold") {
+          sceneCtx.strokeStyle = active
+            ? "rgba(216, 154, 25, 0.42)"
+            : a.color
+              ? "rgba(37, 99, 235, 0.17)"
+              : "rgba(229, 72, 77, 0.17)";
+        } else {
+          sceneCtx.strokeStyle = active ? "rgba(216, 154, 25, 0.34)" : "rgba(102, 112, 133, 0.14)";
+        }
+        sceneCtx.beginPath();
+        sceneCtx.moveTo(a.x, a.y);
+        sceneCtx.lineTo(b.x, b.y);
+        sceneCtx.stroke();
+      }
+      sceneCtx.restore();
+    }
+
+    function drawNodes() {
+      const radius = state.config.n > 140 ? 4.5 : 5.6;
+      for (const node of state.nodes) {
+        sceneCtx.save();
+        sceneCtx.beginPath();
+        sceneCtx.arc(node.x, node.y, radius + (node.unhappy ? 2.6 : 0), 0, Math.PI * 2);
+        sceneCtx.fillStyle = node.unhappy ? "rgba(216, 154, 25, 0.34)" : "rgba(255, 255, 255, 0.98)";
+        sceneCtx.fill();
+
+        sceneCtx.beginPath();
+        sceneCtx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+        sceneCtx.fillStyle = node.color ? BLUE : RED;
+        sceneCtx.fill();
+        sceneCtx.lineWidth = 1.2;
+        sceneCtx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        sceneCtx.stroke();
+        sceneCtx.restore();
+      }
+    }
+
+    function drawEndingLabel() {
+      const text = mode === "threshold" ? (state.blocked ? "No happy move" : "Everyone happy") : state.metrics.absorbedText;
+      sceneCtx.save();
+      sceneCtx.font = "700 18px Inter, system-ui, sans-serif";
+      const width = sceneCtx.measureText(text).width + 34;
+      const x = (view.width - width) / 2;
+      const y = view.height - 58;
+      sceneCtx.fillStyle = "rgba(255, 255, 255, 0.92)";
+      sceneCtx.strokeStyle = "rgba(217, 222, 232, 0.9)";
+      roundRect(sceneCtx, x, y, width, 42, 8);
+      sceneCtx.fill();
+      sceneCtx.stroke();
+      sceneCtx.fillStyle = INK;
+      sceneCtx.fillText(text, x + 17, y + 27);
+      sceneCtx.restore();
+    }
+
+    function roundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + width, y, x + width, y + height, radius);
+      ctx.arcTo(x + width, y + height, x, y + height, radius);
+      ctx.arcTo(x, y + height, x, y, radius);
+      ctx.arcTo(x, y, x + width, y, radius);
+      ctx.closePath();
+    }
+
+    function renderChart() {
+      const rect = els.chart.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      chartCtx.clearRect(0, 0, width, height);
+      chartCtx.fillStyle = "#fbfcfe";
+      chartCtx.fillRect(0, 0, width, height);
+      chartCtx.strokeStyle = "rgba(217, 222, 232, 0.8)";
+      chartCtx.lineWidth = 1;
+      chartCtx.beginPath();
+      chartCtx.moveTo(10, height - 16);
+      chartCtx.lineTo(width - 10, height - 16);
+      chartCtx.stroke();
+
+      drawSeries("blueShare", BLUE, width, height);
+      if (mode === "threshold") {
+        drawSeries("segregatedShare", GREEN, width, height);
+        drawSeries("unhappyShare", AMBER, width, height);
+      } else {
+        drawSeries("activeShare", AMBER, width, height);
+      }
+    }
+
+    function drawSeries(key, color, width, height) {
+      const values = state.history;
+      if (values.length < 2) return;
+      const left = 12;
+      const right = width - 12;
+      const top = 12;
+      const bottom = height - 18;
+      chartCtx.save();
+      chartCtx.strokeStyle = color;
+      chartCtx.lineWidth = 2;
+      chartCtx.beginPath();
+      values.forEach((point, index) => {
+        const x = left + (right - left) * (index / (values.length - 1));
+        const y = bottom - (bottom - top) * clamp(point[key] || 0, 0, 1);
+        if (index === 0) chartCtx.moveTo(x, y);
+        else chartCtx.lineTo(x, y);
+      });
+      chartCtx.stroke();
+      chartCtx.restore();
+    }
+
+    function renderBars() {
+      const groups = state.groups
+        .slice()
+        .filter(group => group.members.size > 0)
+        .sort((a, b) => b.members.size - a.members.size)
+        .slice(0, 14);
+      const html = groups.map(group => {
+        const total = Math.max(1, group.members.size);
+        const blue = Math.round((group.blue / total) * 100);
+        const red = Math.max(0, 100 - blue);
+        return `<div class="bar" title="Clique ${group.id + 1}: ${group.blue} blue, ${group.red} red"><span class="blue" style="width:${blue}%"></span><span class="red" style="width:${red}%"></span></div>`;
+      }).join("");
+      els.bars.innerHTML = html;
+    }
+
+    function animationFrame() {
+      if (state.running) {
+        if (mode === "threshold") stepThreshold();
+        else stepVoter();
+      }
+      relaxLayout();
+      renderScene();
+      if (state.tick % 4 === 0) renderBars();
+      requestAnimationFrame(animationFrame);
+    }
+
+    function setMode(nextMode) {
+      mode = nextMode;
+      for (const tab of els.tabs) {
+        tab.classList.toggle("active", tab.dataset.mode === mode);
+      }
+      resetSimulation(false);
+    }
+
+    els.tabs.forEach(tab => {
+      tab.addEventListener("click", () => setMode(tab.dataset.mode));
+    });
+
+    [els.agents, els.cliques, els.lambda, els.tau, els.blue, els.speed].forEach(input => {
+      input.addEventListener("input", syncControlLabels);
+      input.addEventListener("change", () => resetSimulation(false));
+    });
+
+    els.seed.addEventListener("change", () => resetSimulation(false));
+    els.run.addEventListener("click", () => {
+      if (state.settled) {
+        resetSimulation(true);
+        return;
+      }
+      state.running = !state.running;
+      updateReadout();
+    });
+    els.step.addEventListener("click", () => {
+      state.running = false;
+      if (mode === "threshold") stepThreshold();
+      else stepVoter();
+      updateReadout();
+    });
+    els.reset.addEventListener("click", () => resetSimulation(false));
+    els.newSeed.addEventListener("click", () => {
+      els.seed.value = Math.floor(1 + Math.random() * 999999);
+      resetSimulation(false);
+    });
+    els.estimate.addEventListener("click", runCurrentEstimate);
+    els.sweepTau.addEventListener("click", runTauSweep);
+
+    window.addEventListener("resize", () => {
+      resizeCanvas();
+      placeNodesNearGroups();
+    });
+
+    syncControlLabels();
+    resizeCanvas();
+    resetSimulation(false);
+    requestAnimationFrame(animationFrame);
+  </script>
+</body>
+</html>
