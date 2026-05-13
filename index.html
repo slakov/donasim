@@ -378,7 +378,7 @@
 
     .experiment-actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
       gap: 8px;
       margin-bottom: 10px;
     }
@@ -489,7 +489,7 @@
     <header class="topbar">
       <div class="title">
         <h1>RIG Dynamics Lab</h1>
-        <p>Absorbing threshold dynamics and finite voter-model consensus on RIGs.</p>
+        <p>Absorbing threshold dynamics and finite voter-model experiments on RIGs.</p>
       </div>
       <nav class="tabs" aria-label="Simulation mode">
         <button class="tab active" type="button" data-mode="threshold">Tolerance threshold</button>
@@ -519,10 +519,16 @@
           <small>Initial RIG: each member belongs to each group with probability &lambda;/m.</small>
         </label>
 
-        <label class="control" id="tauControl">
-          <span class="control-row"><span><strong>&tau;</strong> demand</span><output id="tauOut"></output></span>
-          <input id="tau" type="range" min="0" max="1" step="0.01" value="0.62">
-          <small>Minimum same-colour fraction required; 0 means no demand, 1 means all-same.</small>
+        <label class="control" id="tauBlueControl">
+          <span class="control-row"><span><strong>&tau;<sub>B</sub></strong> blue demand</span><output id="tauBlueOut"></output></span>
+          <input id="tauBlue" type="range" min="0" max="1" step="0.01" value="0.62">
+          <small>Minimum blue fraction required by blue members; 0 means no demand, 1 means all-blue.</small>
+        </label>
+
+        <label class="control" id="tauRedControl">
+          <span class="control-row"><span><strong>&tau;<sub>R</sub></strong> red demand</span><output id="tauRedOut"></output></span>
+          <input id="tauRed" type="range" min="0" max="1" step="0.01" value="0.62">
+          <small>Minimum red fraction required by red members; the diagonal case is &tau;<sub>B</sub>=&tau;<sub>R</sub>.</small>
         </label>
 
         <label class="control" id="joinControl">
@@ -602,7 +608,8 @@
           </div>
           <div class="experiment-actions">
             <button id="estimate" type="button">Estimate</button>
-            <button id="sweepTau" type="button">Sweep &tau;</button>
+            <button id="sweepTau" type="button">Sweep diagonal</button>
+            <button id="sweepTauGrid" type="button">Sweep grid</button>
           </div>
           <div id="ensemble" class="ensemble">Run an estimate to aggregate this parameter point over many seeds.</div>
         </section>
@@ -624,19 +631,22 @@
       agents: document.getElementById("agents"),
       cliques: document.getElementById("cliques"),
       lambda: document.getElementById("lambda"),
-      tau: document.getElementById("tau"),
+      tauBlue: document.getElementById("tauBlue"),
+      tauRed: document.getElementById("tauRed"),
       joinRate: document.getElementById("joinRate"),
       leaveRate: document.getElementById("leaveRate"),
       blue: document.getElementById("blue"),
       speed: document.getElementById("speed"),
       seed: document.getElementById("seed"),
-      tauControl: document.getElementById("tauControl"),
+      tauBlueControl: document.getElementById("tauBlueControl"),
+      tauRedControl: document.getElementById("tauRedControl"),
       joinControl: document.getElementById("joinControl"),
       leaveControl: document.getElementById("leaveControl"),
       agentsOut: document.getElementById("agentsOut"),
       cliquesOut: document.getElementById("cliquesOut"),
       lambdaOut: document.getElementById("lambdaOut"),
-      tauOut: document.getElementById("tauOut"),
+      tauBlueOut: document.getElementById("tauBlueOut"),
+      tauRedOut: document.getElementById("tauRedOut"),
       joinOut: document.getElementById("joinOut"),
       leaveOut: document.getElementById("leaveOut"),
       blueOut: document.getElementById("blueOut"),
@@ -659,6 +669,7 @@
       replicates: document.getElementById("replicates"),
       estimate: document.getElementById("estimate"),
       sweepTau: document.getElementById("sweepTau"),
+      sweepTauGrid: document.getElementById("sweepTauGrid"),
       ensemble: document.getElementById("ensemble")
     };
 
@@ -700,7 +711,8 @@
         n: Number(els.agents.value),
         m: Number(els.cliques.value),
         lambda: Number(els.lambda.value),
-        tau: Number(els.tau.value),
+        tauBlue: Number(els.tauBlue.value),
+        tauRed: Number(els.tauRed.value),
         joinRate: Number(els.joinRate.value),
         leaveRate: Number(els.leaveRate.value),
         pBlue: Number(els.blue.value),
@@ -713,7 +725,8 @@
       els.agentsOut.textContent = els.agents.value;
       els.cliquesOut.textContent = els.cliques.value;
       els.lambdaOut.textContent = Number(els.lambda.value).toFixed(1);
-      els.tauOut.textContent = Number(els.tau.value).toFixed(2);
+      els.tauBlueOut.textContent = Number(els.tauBlue.value).toFixed(2);
+      els.tauRedOut.textContent = Number(els.tauRed.value).toFixed(2);
       els.joinOut.textContent = Number(els.joinRate.value).toFixed(2);
       els.leaveOut.textContent = Number(els.leaveRate.value).toFixed(2);
       els.blueOut.textContent = percent(Number(els.blue.value));
@@ -777,14 +790,16 @@
         metrics: null
       };
 
-      els.tauControl.classList.toggle("hidden", mode !== "threshold");
+      els.tauBlueControl.classList.toggle("hidden", mode !== "threshold");
+      els.tauRedControl.classList.toggle("hidden", mode !== "threshold");
       els.joinControl.classList.toggle("hidden", mode !== "voter");
       els.leaveControl.classList.toggle("hidden", mode !== "voter");
       els.sweepTau.classList.toggle("hidden", mode !== "threshold");
+      els.sweepTauGrid.classList.toggle("hidden", mode !== "threshold");
       els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : "Active edges";
       els.metricThirdLabel.textContent = mode === "threshold" ? "Unhappy agents" : "Stop state";
       els.ensemble.textContent = mode === "threshold"
-        ? "Run an estimate or tau sweep to aggregate this parameter point over many seeds."
+        ? "Run an estimate, a diagonal sweep, or a two-threshold grid to aggregate this parameter point over many seeds."
         : "Run an estimate to aggregate voter absorption over many seeds.";
 
       for (let i = 0; i < config.m; i += 1) {
@@ -974,13 +989,21 @@
       return same / total;
     }
 
+    function demandForColor(color, config = state.config) {
+      return color ? config.tauBlue : config.tauRed;
+    }
+
+    function isMembershipHappy(node, group) {
+      return sameShare(node, group) + 1e-9 >= demandForColor(node.color);
+    }
+
     function collectUnhappyPairs() {
       const pairs = [];
       for (const node of state.nodes) {
         node.unhappy = false;
         for (const groupId of node.groups) {
           const group = state.groups[groupId];
-          if (sameShare(node, group) + 1e-9 < state.config.tau) {
+          if (!isMembershipHappy(node, group)) {
             node.unhappy = true;
             pairs.push([node, group]);
           }
@@ -997,7 +1020,7 @@
         const share = shareIfJoined(node, group);
         const balance = 1 / Math.sqrt(group.members.size + 1);
         const entry = { group, score: share + 0.08 * balance + rng() * 0.015 };
-        if (share + 1e-9 >= state.config.tau) preferred.push(entry);
+        if (share + 1e-9 >= demandForColor(node.color)) preferred.push(entry);
       }
 
       const pool = preferred
@@ -1030,7 +1053,7 @@
 
       for (let i = 0; i < pairs.length && moves < maxMoves; i += 1) {
         const [node, group] = pairs[i];
-        if (node.groups.has(group.id) && sameShare(node, group) + 1e-9 < state.config.tau) {
+        if (node.groups.has(group.id) && !isMembershipHappy(node, group)) {
           if (relocateMembership(node, group)) moves += 1;
         }
       }
@@ -1249,21 +1272,21 @@
         : state.running ? "running" : "paused";
 
       els.formula.innerHTML = mode === "threshold"
-        ? `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Projected density |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`
+        ? `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Demands: &tau;<sub>B</sub>=${number(cfg.tauBlue, 2)}, &tau;<sub>R</sub>=${number(cfg.tauRed, 2)}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Projected density |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`
         : `Initial RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Dynamic VM graph: join rate &gamma;=${number(cfg.joinRate, 2)}, leave rate &mu;=${number(cfg.leaveRate, 2)}. Observed mean |C(t)| = ${number(metrics.meanGroupSize, 2)}; projected density |E(t)|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`;
 
       if (mode === "threshold") {
         renderResultItems([
           `<strong>Stopping statistic:</strong> ${stopText}; ${metrics.unhappyAgents} unhappy agents and ${metrics.unhappy} unhappy memberships remain.`,
-          `<strong>Segregation observable:</strong> ${metrics.segregatedGroups}/${metrics.nonemptyGroups} nonempty groups are monochromatic (${percent(metrics.segregatedShare)}); ${metrics.mixedGroups} mixed groups remain.`,
+          `<strong>Segregation observable:</strong> ${metrics.segregatedGroups}/${metrics.nonemptyGroups} nonempty groups are monochromatic (${percent(metrics.segregatedShare)}); ${metrics.mixedGroups} mixed groups remain. Mixed groups can be absorbing when both colours meet their own demand.`,
           `<strong>Network observable:</strong> ${metrics.activeEdges} opposite-colour projected edges remain (${percent(metrics.activeShare)} of projected edges); ${metrics.isolated} isolated members.`,
-          `<strong>Model use:</strong> across seeds, record final segregation share, unhappy agents, and stopping time as empirical estimates for the threshold &tau; at which segregation becomes sharp.`
+          `<strong>Model use:</strong> across seeds, record final segregation share, unhappy agents, and stopping time as empirical estimates for the demand surface (&tau;<sub>B</sub>, &tau;<sub>R</sub>) at which segregation becomes sharp.`
         ]);
       } else {
         const globalConsensus = metrics.blueShare === 0 || metrics.blueShare === 1;
         const localIsAbsorbing = cfg.joinRate === 0 && metrics.activeEdges === 0;
         renderResultItems([
-          `<strong>Absorbing statistic:</strong> ${stopText}; ${metrics.activeEdges} active opposite-colour edges remain.`,
+          `<strong>Stopping rule:</strong> ${cfg.joinRate > 0 ? "global consensus only" : "global or component-wise local consensus"}; ${stopText}; ${metrics.activeEdges} active opposite-colour edges remain.`,
           `<strong>Consensus observable:</strong> final blue share is ${percent(metrics.blueShare)}, giving ${globalConsensus ? "global consensus" : localIsAbsorbing ? "component-wise local consensus" : "non-absorbing colour separation"} on this evolving RIG.`,
           `<strong>Graph observable:</strong> ${state.edges.length}/${Math.round(denominator)} possible projected edges are present; ${metrics.isolated} isolated members; current graph events use &gamma;=${number(cfg.joinRate, 2)}, &mu;=${number(cfg.leaveRate, 2)}.`,
           `<strong>Model use:</strong> across seeds, estimate fixation probability, final blue share, graph density, and absorption time as functions of &lambda;, &gamma;, &mu;, and p<sub>B</sub>.`
@@ -1419,13 +1442,13 @@
       return same / total;
     }
 
-    function batchCollectUnhappyPairs(model, tau) {
+    function batchCollectUnhappyPairs(model, config) {
       const pairs = [];
       for (const node of model.nodes) {
         node.unhappy = false;
         for (const groupId of node.groups) {
           const group = model.groups[groupId];
-          if (batchSameShare(model, node, group) + 1e-9 < tau) {
+          if (batchSameShare(model, node, group) + 1e-9 < demandForColor(node.color, config)) {
             node.unhappy = true;
             pairs.push([node, group]);
           }
@@ -1434,22 +1457,22 @@
       return pairs;
     }
 
-    function batchChooseTarget(model, node, tau) {
+    function batchChooseTarget(model, node, config) {
       const preferred = [];
       for (const group of model.groups) {
         if (node.groups.has(group.id)) continue;
         const share = batchShareIfJoined(node, group);
         const balance = 1 / Math.sqrt(group.members.size + 1);
-        if (share + 1e-9 >= tau) preferred.push({ group, score: share + 0.08 * balance + model.random() * 0.015 });
+        if (share + 1e-9 >= demandForColor(node.color, config)) preferred.push({ group, score: share + 0.08 * balance + model.random() * 0.015 });
       }
       preferred.sort((a, b) => b.score - a.score);
       const pool = preferred.slice(0, 4);
       return pool.length ? pool[Math.floor(model.random() * pool.length)].group : null;
     }
 
-    function batchThresholdMetrics(model, tau, updates, blocked, maxedOut) {
+    function batchThresholdMetrics(model, config, updates, blocked, maxedOut) {
       buildBatchGraph(model);
-      const pairs = batchCollectUnhappyPairs(model, tau);
+      const pairs = batchCollectUnhappyPairs(model, config);
       const blueCount = model.nodes.reduce((sum, node) => sum + node.color, 0);
       const memberships = model.groups.reduce((sum, group) => sum + group.members.size, 0);
       const nonemptyGroups = model.groups.filter(group => group.members.size > 0).length;
@@ -1491,13 +1514,13 @@
       let blocked = false;
 
       while (updates < maxUpdates) {
-        const pairs = shuffleWith(model.random, batchCollectUnhappyPairs(model, config.tau));
-        if (!pairs.length) return batchThresholdMetrics(model, config.tau, updates, false, false);
+        const pairs = shuffleWith(model.random, batchCollectUnhappyPairs(model, config));
+        if (!pairs.length) return batchThresholdMetrics(model, config, updates, false, false);
 
         let moved = false;
         for (const [node, group] of pairs) {
-          if (!node.groups.has(group.id) || batchSameShare(model, node, group) + 1e-9 >= config.tau) continue;
-          const target = batchChooseTarget(model, node, config.tau);
+          if (!node.groups.has(group.id) || batchSameShare(model, node, group) + 1e-9 >= demandForColor(node.color, config)) continue;
+          const target = batchChooseTarget(model, node, config);
           if (!target) continue;
           node.groups.delete(group.id);
           group.members.delete(node.id);
@@ -1515,7 +1538,7 @@
           break;
         }
       }
-      return batchThresholdMetrics(model, config.tau, updates, blocked, updates >= maxUpdates);
+      return batchThresholdMetrics(model, config, updates, blocked, updates >= maxUpdates);
     }
 
     function countActiveBatchEdges(model) {
@@ -1657,7 +1680,7 @@
           ["E[unhappy agents]", estimateText(summarize(results, "unhappyAgents"), 2)],
           ["P(max updates)", estimateText(summarize(results, "maxedOut"), 1, 100, "%")]
         ];
-        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds at &tau;=${number(config.tau, 2)}. Values show mean +/- Monte Carlo standard error.${tableHtml(["Observable", "Estimate"], rows)}`;
+        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds at &tau;<sub>B</sub>=${number(config.tauBlue, 2)}, &tau;<sub>R</sub>=${number(config.tauRed, 2)}. Values show mean +/- Monte Carlo standard error.${tableHtml(["Observable", "Estimate"], rows)}`;
       } else {
         const rows = [
           ["P(absorbed)", estimateText(summarize(results, "absorbed"), 1, 100, "%")],
@@ -1665,7 +1688,7 @@
           ["P(red consensus)", estimateText(summarize(results, "globalRed"), 1, 100, "%")],
           ["P(local consensus)", estimateText(summarize(results, "localConsensus"), 1, 100, "%")],
           ["E[final blue share]", estimateText(summarize(results, "blueShare"), 1, 100, "%")],
-          ["E[T_abs]", estimateText(summarize(results, "events"), 1)],
+          ["E[events to stop/horizon]", estimateText(summarize(results, "events"), 1)],
           ["E[joins/leaves]", `${estimateText(summarize(results, "joins"), 1)} / ${estimateText(summarize(results, "leaves"), 1)}`],
           ["P(max events)", estimateText(summarize(results, "maxedOut"), 1, 100, "%")]
         ];
@@ -1694,12 +1717,12 @@
       const baseConfig = configFromControls();
       const reps = replicateCount(60);
       const taus = [0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00];
-      els.ensemble.textContent = "Calculating tau sweep...";
+      els.ensemble.textContent = "Calculating diagonal demand sweep...";
       setExperimentBusy(true);
       setTimeout(() => {
         const rows = [];
         for (const tau of taus) {
-          const config = { ...baseConfig, tau };
+          const config = { ...baseConfig, tauBlue: tau, tauRed: tau };
           const results = [];
           for (let i = 0; i < reps; i += 1) {
             results.push(simulateThresholdBatch(config, config.seed + 1009 * i + Math.round(tau * 10000)));
@@ -1712,7 +1735,34 @@
             estimateText(summarize(results, "blocked"), 0, 100, "%")
           ]);
         }
-        els.ensemble.innerHTML = `Threshold sweep with ${reps} seeds per &tau; value. Use the transition in E[segregated share] and P(happy stop) as a numerical proxy for a sharp-segregation threshold.${tableHtml(["&tau;", "P happy", "E[S]", "E[T]", "P blocked"], rows)}`;
+        els.ensemble.innerHTML = `Diagonal threshold sweep with ${reps} seeds per value (&tau;<sub>B</sub>=&tau;<sub>R</sub>). Use the transition in E[segregated share] and P(happy stop) as a numerical proxy for a sharp-segregation threshold.${tableHtml(["&tau;", "P happy", "E[S]", "E[T]", "P blocked"], rows)}`;
+        setExperimentBusy(false);
+      }, 20);
+    }
+
+    function runTauGrid() {
+      const baseConfig = configFromControls();
+      const reps = replicateCount(30);
+      const taus = [0, 0.25, 0.35, 0.50, 0.65, 0.80, 1.00];
+      els.ensemble.textContent = "Calculating two-threshold grid...";
+      setExperimentBusy(true);
+      setTimeout(() => {
+        const rows = [];
+        for (const tauBlue of taus) {
+          const row = [`${number(tauBlue, 2)}`];
+          for (const tauRed of taus) {
+            const config = { ...baseConfig, tauBlue, tauRed };
+            const results = [];
+            for (let i = 0; i < reps; i += 1) {
+              const offset = Math.round(tauBlue * 10000) + Math.round(tauRed * 100000);
+              results.push(simulateThresholdBatch(config, config.seed + 1009 * i + offset));
+            }
+            row.push(estimateText(summarize(results, "segregatedShare"), 0, 100, "%"));
+          }
+          rows.push(row);
+        }
+        const headers = ["&tau;<sub>B</sub> \\ &tau;<sub>R</sub>", ...taus.map(tau => number(tau, 2))];
+        els.ensemble.innerHTML = `Two-threshold grid with ${reps} seeds per cell. Entries are E[segregated clique share]; asymmetry between rows and columns estimates how different demands by colour shift segregation.${tableHtml(headers, rows)}`;
         setExperimentBusy(false);
       }, 20);
     }
@@ -1720,6 +1770,7 @@
     function setExperimentBusy(isBusy) {
       els.estimate.disabled = isBusy;
       els.sweepTau.disabled = isBusy;
+      els.sweepTauGrid.disabled = isBusy;
       els.replicates.disabled = isBusy;
     }
 
@@ -1922,7 +1973,7 @@
         members.forEach((nodeId, index) => {
           const node = state.nodes[nodeId];
           const point = membershipDotPosition(group, nodeId, index, members.length);
-          const unhappyHere = sameShare(node, group) + 1e-9 < state.config.tau;
+          const unhappyHere = !isMembershipHappy(node, group);
           sceneCtx.beginPath();
           sceneCtx.arc(point.x, point.y, unhappyHere ? 6.8 : 5.4, 0, Math.PI * 2);
           sceneCtx.fillStyle = unhappyHere ? "rgba(216, 154, 25, 0.34)" : "rgba(255, 255, 255, 0.95)";
@@ -2093,7 +2144,7 @@
       tab.addEventListener("click", () => setMode(tab.dataset.mode));
     });
 
-    [els.agents, els.cliques, els.lambda, els.tau, els.joinRate, els.leaveRate, els.blue, els.speed].forEach(input => {
+    [els.agents, els.cliques, els.lambda, els.tauBlue, els.tauRed, els.joinRate, els.leaveRate, els.blue, els.speed].forEach(input => {
       input.addEventListener("input", syncControlLabels);
       input.addEventListener("change", () => resetSimulation(false));
     });
@@ -2120,6 +2171,7 @@
     });
     els.estimate.addEventListener("click", runCurrentEstimate);
     els.sweepTau.addEventListener("click", runTauSweep);
+    els.sweepTauGrid.addEventListener("click", runTauGrid);
 
     window.addEventListener("resize", () => {
       resizeCanvas();

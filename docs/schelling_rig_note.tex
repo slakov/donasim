@@ -299,6 +299,16 @@ As studied in \cite{schelling1971dynamic}, it might be interesting to consider t
 \end{itemize}
 with $\beta_1<\beta_2$ and similarly for the red individuals. It could then be interesting to simulate and see, fixing $n,m,p,\beta_1,\beta_2,\gamma_1,\gamma_2$, what is the minimal threshold $\tau$ for which segregation is still sharp.
 
+For numerical experiments it is natural to also allow the two colours to have different demands, say $\tau_B$ for blue individuals and $\tau_R$ for red individuals. In this asymmetric-threshold version, blue individuals use the criterion
+$$
+    \frac{x}{x+y}\geq \tau_B,
+$$
+while red individuals use
+$$
+    \frac{y}{x+y}\geq \tau_R.
+$$
+The one-parameter threshold model is recovered on the diagonal $\tau_B=\tau_R=\tau$. A two-dimensional sweep over $(\tau_B,\tau_R)$ can therefore be used to estimate the segregation surface and to check whether the apparent transition near the symmetric threshold is robust under asymmetric colour demands.
+
 
 \subsection{The reversible chain}
 
