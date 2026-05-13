@@ -514,15 +514,27 @@
         </label>
 
         <label class="control">
-          <span class="control-row"><span><strong>&lambda;</strong> memberships</span><output id="lambdaOut"></output></span>
+          <span class="control-row"><span><strong>&lambda;</strong> initial memberships</span><output id="lambdaOut"></output></span>
           <input id="lambda" type="range" min="0.70" max="3.50" step="0.10" value="1.70">
-          <small>Each member joins each group with probability &lambda;/m.</small>
+          <small>Initial RIG: each member belongs to each group with probability &lambda;/m.</small>
         </label>
 
         <label class="control" id="tauControl">
           <span class="control-row"><span><strong>&tau;</strong> demand</span><output id="tauOut"></output></span>
-          <input id="tau" type="range" min="0.50" max="0.90" step="0.01" value="0.62">
-          <small>Minimum same-colour fraction required in every group membership.</small>
+          <input id="tau" type="range" min="0" max="1" step="0.01" value="0.62">
+          <small>Minimum same-colour fraction required; 0 means no demand, 1 means all-same.</small>
+        </label>
+
+        <label class="control" id="joinControl">
+          <span class="control-row"><span><strong>&gamma;</strong> VM join rate</span><output id="joinOut"></output></span>
+          <input id="joinRate" type="range" min="0" max="1" step="0.01" value="0.25">
+          <small>Relative rate at which a voter joins a new group, changing neighbours.</small>
+        </label>
+
+        <label class="control" id="leaveControl">
+          <span class="control-row"><span><strong>&mu;</strong> VM leave rate</span><output id="leaveOut"></output></span>
+          <input id="leaveRate" type="range" min="0" max="1" step="0.01" value="0.08">
+          <small>Relative rate at which a voter leaves one current group membership.</small>
         </label>
 
         <label class="control">
@@ -613,14 +625,20 @@
       cliques: document.getElementById("cliques"),
       lambda: document.getElementById("lambda"),
       tau: document.getElementById("tau"),
+      joinRate: document.getElementById("joinRate"),
+      leaveRate: document.getElementById("leaveRate"),
       blue: document.getElementById("blue"),
       speed: document.getElementById("speed"),
       seed: document.getElementById("seed"),
       tauControl: document.getElementById("tauControl"),
+      joinControl: document.getElementById("joinControl"),
+      leaveControl: document.getElementById("leaveControl"),
       agentsOut: document.getElementById("agentsOut"),
       cliquesOut: document.getElementById("cliquesOut"),
       lambdaOut: document.getElementById("lambdaOut"),
       tauOut: document.getElementById("tauOut"),
+      joinOut: document.getElementById("joinOut"),
+      leaveOut: document.getElementById("leaveOut"),
       blueOut: document.getElementById("blueOut"),
       speedOut: document.getElementById("speedOut"),
       run: document.getElementById("run"),
@@ -683,6 +701,8 @@
         m: Number(els.cliques.value),
         lambda: Number(els.lambda.value),
         tau: Number(els.tau.value),
+        joinRate: Number(els.joinRate.value),
+        leaveRate: Number(els.leaveRate.value),
         pBlue: Number(els.blue.value),
         speed: Number(els.speed.value),
         seed: Math.max(1, Number(els.seed.value) || 1)
@@ -694,6 +714,8 @@
       els.cliquesOut.textContent = els.cliques.value;
       els.lambdaOut.textContent = Number(els.lambda.value).toFixed(1);
       els.tauOut.textContent = Number(els.tau.value).toFixed(2);
+      els.joinOut.textContent = Number(els.joinRate.value).toFixed(2);
+      els.leaveOut.textContent = Number(els.leaveRate.value).toFixed(2);
       els.blueOut.textContent = percent(Number(els.blue.value));
       els.speedOut.textContent = `${els.speed.value}x`;
     }
@@ -749,11 +771,15 @@
         blocked: false,
         lastMoves: 0,
         lastFlips: 0,
+        lastJoins: 0,
+        lastLeaves: 0,
         history: [],
         metrics: null
       };
 
       els.tauControl.classList.toggle("hidden", mode !== "threshold");
+      els.joinControl.classList.toggle("hidden", mode !== "voter");
+      els.leaveControl.classList.toggle("hidden", mode !== "voter");
       els.sweepTau.classList.toggle("hidden", mode !== "threshold");
       els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : "Active edges";
       els.metricThirdLabel.textContent = mode === "threshold" ? "Unhappy agents" : "Stop state";
@@ -1031,28 +1057,73 @@
       if (state.settled) return;
       const events = Math.max(1, state.config.speed * 18);
       let flips = 0;
+      let joins = 0;
+      let leaves = 0;
+      const copyRate = 1;
+      const joinRate = state.config.joinRate;
+      const leaveRate = state.config.leaveRate;
+      const totalRate = copyRate + joinRate + leaveRate;
 
       for (let i = 0; i < events; i += 1) {
-        const node = state.nodes[Math.floor(rng() * state.nodes.length)];
-        if (!node.neighbors.size) continue;
-        const neighbors = Array.from(node.neighbors);
-        const other = state.nodes[neighbors[Math.floor(rng() * neighbors.length)]];
-        if (node.color !== other.color) {
-          node.color = other.color;
-          flips += 1;
+        const event = rng() * totalRate;
+        if (event < copyRate) {
+          const node = state.nodes[Math.floor(rng() * state.nodes.length)];
+          if (!node.neighbors.size) continue;
+          const neighbors = Array.from(node.neighbors);
+          const other = state.nodes[neighbors[Math.floor(rng() * neighbors.length)]];
+          if (node.color !== other.color) {
+            node.color = other.color;
+            flips += 1;
+          }
+        } else if (event < copyRate + joinRate) {
+          if (attemptRandomJoin()) joins += 1;
+        } else if (attemptRandomLeave()) {
+          leaves += 1;
         }
       }
 
       state.tick += events;
       state.lastFlips = flips;
+      state.lastJoins = joins;
+      state.lastLeaves = leaves;
       refreshGroupCounts();
+      if (joins > 0 || leaves > 0) buildGraph();
       state.metrics = computeMetrics();
-      if (state.metrics.activeEdges === 0) {
+      if (state.metrics.blueShare === 0 || state.metrics.blueShare === 1 || (state.config.joinRate === 0 && state.metrics.activeEdges === 0)) {
         state.settled = true;
         state.running = false;
       }
       pushHistory();
       updateReadout();
+    }
+
+    function attemptRandomJoin() {
+      const node = state.nodes[Math.floor(rng() * state.nodes.length)];
+      if (node.groups.size >= state.groups.length) return false;
+      for (let tries = 0; tries < 8; tries += 1) {
+        const group = state.groups[Math.floor(rng() * state.groups.length)];
+        if (!node.groups.has(group.id)) {
+          addNodeToGroup(node, group);
+          recountGroup(group);
+          return true;
+        }
+      }
+      const candidates = state.groups.filter(group => !node.groups.has(group.id));
+      if (!candidates.length) return false;
+      const group = candidates[Math.floor(rng() * candidates.length)];
+      addNodeToGroup(node, group);
+      recountGroup(group);
+      return true;
+    }
+
+    function attemptRandomLeave() {
+      const node = state.nodes[Math.floor(rng() * state.nodes.length)];
+      if (!node.groups.size) return false;
+      const groups = Array.from(node.groups);
+      const group = state.groups[groups[Math.floor(rng() * groups.length)]];
+      removeNodeFromGroup(node, group);
+      recountGroup(group);
+      return true;
     }
 
     function computeMetrics() {
@@ -1102,7 +1173,13 @@
         };
       }
 
-      const consensus = blueCount === 0 ? "red consensus" : blueCount === state.nodes.length ? "blue consensus" : "local consensus";
+      const consensus = blueCount === 0
+        ? "red consensus"
+        : blueCount === state.nodes.length
+          ? "blue consensus"
+          : activeEdges === 0
+            ? state.config.joinRate === 0 ? "local consensus" : "temporarily separated"
+            : "copying";
       return {
         blueShare,
         segregatedShare: 0,
@@ -1147,7 +1224,7 @@
         els.metricSecond.textContent = String(metrics.activeEdges);
         els.metricThird.textContent = metrics.absorbedText;
         setStatus(
-          state.settled ? `Stopped: ${metrics.absorbedText}` : state.running ? `Flips ${state.lastFlips}` : "Paused",
+          state.settled ? `Stopped: ${metrics.absorbedText}` : state.running ? `Flips ${state.lastFlips}, +${state.lastJoins}/-${state.lastLeaves}` : "Paused",
           state.settled ? "done" : state.running ? "running" : ""
         );
       }
@@ -1171,7 +1248,9 @@
         ? state.blocked ? "stopped with no legal happy move" : `absorbed after ${state.tick} updates`
         : state.running ? "running" : "paused";
 
-      els.formula.innerHTML = `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Projected density |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`;
+      els.formula.innerHTML = mode === "threshold"
+        ? `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Projected density |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`
+        : `Initial RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Dynamic VM graph: join rate &gamma;=${number(cfg.joinRate, 2)}, leave rate &mu;=${number(cfg.leaveRate, 2)}. Observed mean |C(t)| = ${number(metrics.meanGroupSize, 2)}; projected density |E(t)|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`;
 
       if (mode === "threshold") {
         renderResultItems([
@@ -1182,11 +1261,12 @@
         ]);
       } else {
         const globalConsensus = metrics.blueShare === 0 || metrics.blueShare === 1;
+        const localIsAbsorbing = cfg.joinRate === 0 && metrics.activeEdges === 0;
         renderResultItems([
           `<strong>Absorbing statistic:</strong> ${stopText}; ${metrics.activeEdges} active opposite-colour edges remain.`,
-          `<strong>Consensus observable:</strong> final blue share is ${percent(metrics.blueShare)}, giving ${globalConsensus ? "global consensus" : "component-wise local consensus"} on this RIG.`,
-          `<strong>Network observable:</strong> ${state.edges.length}/${Math.round(denominator)} possible projected edges are present; ${metrics.isolated} isolated members.`,
-          `<strong>Model use:</strong> across seeds, estimate fixation probability, final blue share, and absorption time as functions of &lambda; and p<sub>B</sub>.`
+          `<strong>Consensus observable:</strong> final blue share is ${percent(metrics.blueShare)}, giving ${globalConsensus ? "global consensus" : localIsAbsorbing ? "component-wise local consensus" : "non-absorbing colour separation"} on this evolving RIG.`,
+          `<strong>Graph observable:</strong> ${state.edges.length}/${Math.round(denominator)} possible projected edges are present; ${metrics.isolated} isolated members; current graph events use &gamma;=${number(cfg.joinRate, 2)}, &mu;=${number(cfg.leaveRate, 2)}.`,
+          `<strong>Model use:</strong> across seeds, estimate fixation probability, final blue share, graph density, and absorption time as functions of &lambda;, &gamma;, &mu;, and p<sub>B</sub>.`
         ]);
       }
     }
@@ -1239,6 +1319,12 @@
       group.red = group.members.size - blue;
     }
 
+    function batchPairKey(a, b) {
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      return `${lo}:${hi}`;
+    }
+
     function buildBatchGraph(model) {
       const edgeMap = new Map();
       const adjacency = Array.from({ length: model.nodes.length }, () => new Set());
@@ -1250,17 +1336,75 @@
             const b = members[j];
             const lo = Math.min(a, b);
             const hi = Math.max(a, b);
-            const key = `${lo}:${hi}`;
+            const key = batchPairKey(lo, hi);
             if (!edgeMap.has(key)) {
-              edgeMap.set(key, { a: lo, b: hi });
+              edgeMap.set(key, { a: lo, b: hi, count: 1 });
               adjacency[lo].add(hi);
               adjacency[hi].add(lo);
+            } else {
+              edgeMap.get(key).count += 1;
             }
           }
         }
       }
+      model.edgeMap = edgeMap;
       model.edges = Array.from(edgeMap.values());
-      model.adjacency = adjacency.map(neighbors => Array.from(neighbors));
+      model.adjacency = adjacency;
+    }
+
+    function connectBatchPair(model, a, b) {
+      if (a === b) return 0;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const key = batchPairKey(lo, hi);
+      const edge = model.edgeMap.get(key);
+      if (edge) {
+        edge.count += 1;
+        return 0;
+      }
+      model.edgeMap.set(key, { a: lo, b: hi, count: 1 });
+      model.adjacency[lo].add(hi);
+      model.adjacency[hi].add(lo);
+      return model.nodes[lo].color === model.nodes[hi].color ? 0 : 1;
+    }
+
+    function disconnectBatchPair(model, a, b) {
+      if (a === b) return 0;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const key = batchPairKey(lo, hi);
+      const edge = model.edgeMap.get(key);
+      if (!edge) return 0;
+      edge.count -= 1;
+      if (edge.count > 0) return 0;
+      model.edgeMap.delete(key);
+      model.adjacency[lo].delete(hi);
+      model.adjacency[hi].delete(lo);
+      return model.nodes[lo].color === model.nodes[hi].color ? 0 : -1;
+    }
+
+    function addBatchMembership(model, node, group) {
+      if (node.groups.has(group.id)) return null;
+      let activeDelta = 0;
+      for (const memberId of group.members) {
+        activeDelta += connectBatchPair(model, node.id, memberId);
+      }
+      node.groups.add(group.id);
+      group.members.add(node.id);
+      recountBatchGroup(model, group);
+      return { activeDelta };
+    }
+
+    function removeBatchMembership(model, node, group) {
+      if (!node.groups.has(group.id)) return null;
+      let activeDelta = 0;
+      for (const memberId of group.members) {
+        if (memberId !== node.id) activeDelta += disconnectBatchPair(model, node.id, memberId);
+      }
+      node.groups.delete(group.id);
+      group.members.delete(node.id);
+      recountBatchGroup(model, group);
+      return { activeDelta };
     }
 
     function batchSameShare(model, node, group) {
@@ -1335,7 +1479,7 @@
         unhappyMemberships: pairs.length,
         activeShare: model.edges.length ? activeEdges / model.edges.length : 0,
         edgeDensity: model.edges.length / possibleEdges,
-        isolated: model.adjacency.filter(neighbors => neighbors.length === 0).length,
+        isolated: model.adjacency.filter(neighbors => neighbors.size === 0).length,
         meanGroupSize: model.groups.length ? memberships / model.groups.length : 0
       };
     }
@@ -1376,53 +1520,106 @@
 
     function countActiveBatchEdges(model) {
       let active = 0;
-      for (const edge of model.edges) {
+      for (const edge of model.edgeMap.values()) {
         if (model.nodes[edge.a].color !== model.nodes[edge.b].color) active += 1;
       }
       return active;
     }
 
+    function attemptBatchJoin(model) {
+      const node = model.nodes[Math.floor(model.random() * model.nodes.length)];
+      if (node.groups.size >= model.groups.length) return false;
+      for (let tries = 0; tries < 8; tries += 1) {
+        const group = model.groups[Math.floor(model.random() * model.groups.length)];
+        if (!node.groups.has(group.id)) {
+          return addBatchMembership(model, node, group);
+        }
+      }
+      const candidates = model.groups.filter(group => !node.groups.has(group.id));
+      if (!candidates.length) return false;
+      const group = candidates[Math.floor(model.random() * candidates.length)];
+      return addBatchMembership(model, node, group);
+    }
+
+    function attemptBatchLeave(model) {
+      const node = model.nodes[Math.floor(model.random() * model.nodes.length)];
+      if (!node.groups.size) return false;
+      const groups = Array.from(node.groups);
+      const group = model.groups[groups[Math.floor(model.random() * groups.length)]];
+      return removeBatchMembership(model, node, group);
+    }
+
     function simulateVoterBatch(config, seed) {
       const model = createBatchModel(config, seed);
       let activeEdges = countActiveBatchEdges(model);
-      const maxEvents = Math.max(10000, config.n * config.n * 16);
+      const maxEvents = Math.max(10000, config.n * config.m * 24);
       let events = 0;
       let flips = 0;
+      let joins = 0;
+      let leaves = 0;
+      const copyRate = 1;
+      const joinRate = config.joinRate;
+      const leaveRate = config.leaveRate;
+      const totalRate = copyRate + joinRate + leaveRate;
+      let blueCount = model.nodes.reduce((sum, node) => sum + node.color, 0);
 
-      while (activeEdges > 0 && events < maxEvents) {
-        const node = model.nodes[Math.floor(model.random() * model.nodes.length)];
-        const neighbors = model.adjacency[node.id];
+      while (blueCount > 0 && blueCount < model.nodes.length && !(joinRate === 0 && activeEdges === 0) && events < maxEvents) {
         events += 1;
-        if (!neighbors.length) continue;
-        const source = model.nodes[neighbors[Math.floor(model.random() * neighbors.length)]];
-        if (source.color === node.color) continue;
+        const event = model.random() * totalRate;
 
-        const oldColor = node.color;
-        const newColor = source.color;
-        for (const neighborId of neighbors) {
-          const neighborColor = model.nodes[neighborId].color;
-          const before = oldColor !== neighborColor ? 1 : 0;
-          const after = newColor !== neighborColor ? 1 : 0;
-          activeEdges += after - before;
+        if (event < copyRate) {
+          const node = model.nodes[Math.floor(model.random() * model.nodes.length)];
+          const neighbors = model.adjacency[node.id];
+          if (!neighbors.size) continue;
+          const sourceId = Array.from(neighbors)[Math.floor(model.random() * neighbors.size)];
+          const source = model.nodes[sourceId];
+          if (source.color === node.color) continue;
+
+          const oldColor = node.color;
+          const newColor = source.color;
+          for (const neighborId of neighbors) {
+            const neighborColor = model.nodes[neighborId].color;
+            const before = oldColor !== neighborColor ? 1 : 0;
+            const after = newColor !== neighborColor ? 1 : 0;
+            activeEdges += after - before;
+          }
+          node.color = newColor;
+          blueCount += newColor - oldColor;
+          flips += 1;
+        } else if (event < copyRate + joinRate) {
+          const joined = attemptBatchJoin(model);
+          if (joined) {
+            joins += 1;
+            activeEdges += joined.activeDelta;
+          }
+        } else {
+          const left = attemptBatchLeave(model);
+          if (left) {
+            leaves += 1;
+            activeEdges += left.activeDelta;
+          }
         }
-        node.color = newColor;
-        flips += 1;
       }
 
-      const blueCount = model.nodes.reduce((sum, node) => sum + node.color, 0);
       const possibleEdges = model.nodes.length > 1 ? model.nodes.length * (model.nodes.length - 1) / 2 : 1;
       const memberships = model.groups.reduce((sum, group) => sum + group.members.size, 0);
+      const globalBlue = blueCount === model.nodes.length;
+      const globalRed = blueCount === 0;
+      const localConsensus = !globalBlue && !globalRed && joinRate === 0 && activeEdges === 0;
       return {
-        absorbed: activeEdges === 0,
-        globalBlue: activeEdges === 0 && blueCount === model.nodes.length,
-        globalRed: activeEdges === 0 && blueCount === 0,
-        localConsensus: activeEdges === 0 && blueCount > 0 && blueCount < model.nodes.length,
+        absorbed: globalBlue || globalRed || localConsensus,
+        globalBlue,
+        globalRed,
+        localConsensus,
+        maxedOut: events >= maxEvents,
         events,
         flips,
+        joins,
+        leaves,
         blueShare: blueCount / model.nodes.length,
         activeEdges,
-        edgeDensity: model.edges.length / possibleEdges,
-        isolated: model.adjacency.filter(neighbors => neighbors.length === 0).length,
+        edgeDensity: model.edgeMap.size / possibleEdges,
+        isolated: model.adjacency.filter(neighbors => neighbors.size === 0).length,
         meanGroupSize: model.groups.length ? memberships / model.groups.length : 0
       };
     }
@@ -1468,9 +1665,11 @@
           ["P(red consensus)", estimateText(summarize(results, "globalRed"), 1, 100, "%")],
           ["P(local consensus)", estimateText(summarize(results, "localConsensus"), 1, 100, "%")],
           ["E[final blue share]", estimateText(summarize(results, "blueShare"), 1, 100, "%")],
-          ["E[T_abs]", estimateText(summarize(results, "events"), 1)]
+          ["E[T_abs]", estimateText(summarize(results, "events"), 1)],
+          ["E[joins/leaves]", `${estimateText(summarize(results, "joins"), 1)} / ${estimateText(summarize(results, "leaves"), 1)}`],
+          ["P(max events)", estimateText(summarize(results, "maxedOut"), 1, 100, "%")]
         ];
-        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds. Values show mean +/- Monte Carlo standard error.${tableHtml(["Observable", "Estimate"], rows)}`;
+        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds at &gamma;=${number(config.joinRate, 2)}, &mu;=${number(config.leaveRate, 2)}. Values show mean +/- Monte Carlo standard error.${tableHtml(["Observable", "Estimate"], rows)}`;
       }
     }
 
@@ -1494,7 +1693,7 @@
     function runTauSweep() {
       const baseConfig = configFromControls();
       const reps = replicateCount(60);
-      const taus = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90];
+      const taus = [0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00];
       els.ensemble.textContent = "Calculating tau sweep...";
       setExperimentBusy(true);
       setTimeout(() => {
@@ -1894,7 +2093,7 @@
       tab.addEventListener("click", () => setMode(tab.dataset.mode));
     });
 
-    [els.agents, els.cliques, els.lambda, els.tau, els.blue, els.speed].forEach(input => {
+    [els.agents, els.cliques, els.lambda, els.tau, els.joinRate, els.leaveRate, els.blue, els.speed].forEach(input => {
       input.addEventListener("input", syncControlLabels);
       input.addEventListener("change", () => resetSimulation(false));
     });
