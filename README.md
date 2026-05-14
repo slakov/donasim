@@ -24,8 +24,9 @@ JavaScript are inline in `index.html`.
 
 The dashboard uses manuscript notation (`n`, `m`, `lambda`, `tau_B`, `tau_R`,
 `p_B`) and reports run-level and Monte Carlo observables such as segregation
-share, unhappy agents, active-edge density, graph joining/leaving counts,
-fixation probabilities, and absorption time. The threshold experiments include
-both a diagonal sweep and a two-threshold grid.
+share, colour-specific unhappy agents, active-edge density, graph
+joining/leaving counts, fixation probabilities, and absorption time. The
+threshold experiments include both a diagonal sweep and a two-threshold grid,
+and each numerical experiment can export a CSV for downstream analysis.
 
 The source note is in [`docs/schelling_rig_note.tex`](docs/schelling_rig_note.tex).
