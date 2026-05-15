@@ -34,7 +34,9 @@ active-edge density, graph joining/leaving counts, fixation probabilities, and
 absorption time. The threshold experiments include both a diagonal sweep and a
 two-threshold grid. The heatmap tab fixes `n`, `m`, `lambda`, and `p_B`, then
 estimates the surface `(tau_B, tau_R, E[S])`, where `S` is the final fraction of
-nonempty monochromatic groups. The CSV also exports blocked-run probability and
-the size-at-least-two segregation diagnostic for downstream analysis.
+nonempty monochromatic groups. It defaults to `Delta tau = 0.10` and 100
+simulations per cell, with `Delta tau = 0.05` available for finer surfaces. The
+CSV also exports blocked-run probability and the size-at-least-two segregation
+diagnostic for downstream analysis.
 
 The source note is in [`docs/schelling_rig_note.tex`](docs/schelling_rig_note.tex).

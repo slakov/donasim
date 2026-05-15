@@ -384,6 +384,14 @@
       font-size: 12px;
     }
 
+    .experiment-hint {
+      display: block;
+      margin: -2px 0 8px;
+      color: #7a8597;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
     .experiment-actions {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
@@ -550,8 +558,8 @@
 
         <label class="control hidden" id="heatmapStepControl">
           <span class="control-row"><span><strong>&Delta;&tau;</strong> heatmap step</span><output id="heatmapStepOut"></output></span>
-          <input id="heatmapStep" type="range" min="0.10" max="0.25" step="0.05" value="0.10">
-          <small>Resolution for the (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Default 0.10 gives 121 cells.</small>
+          <input id="heatmapStep" type="range" min="0.05" max="0.25" step="0.05" value="0.10">
+          <small>Resolution for the (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Default 0.10 gives 121 cells; 0.05 gives 441 cells.</small>
         </label>
 
         <label class="control" id="fallbackControl">
@@ -635,9 +643,10 @@
         <section class="experiment" aria-label="Numerical experiment">
           <h3>Numerical experiment</h3>
           <div class="experiment-controls">
-            <label for="replicates">Seeds</label>
+            <label id="replicatesLabel" for="replicates">Seeds</label>
             <input id="replicates" type="number" min="5" max="200" step="5" value="40">
           </div>
+          <small id="replicatesHint" class="experiment-hint">Independent seeds for the selected experiment.</small>
           <div class="experiment-actions">
             <button id="estimate" type="button">Estimate</button>
             <button id="sweepTau" type="button">Sweep diagonal</button>
@@ -708,6 +717,8 @@
       interpretation: document.getElementById("interpretation"),
       formula: document.getElementById("formula"),
       replicates: document.getElementById("replicates"),
+      replicatesLabel: document.getElementById("replicatesLabel"),
+      replicatesHint: document.getElementById("replicatesHint"),
       estimate: document.getElementById("estimate"),
       sweepTau: document.getElementById("sweepTau"),
       sweepTauGrid: document.getElementById("sweepTauGrid"),
@@ -850,8 +861,12 @@
       els.sweepTau.classList.toggle("hidden", mode !== "threshold");
       els.sweepTauGrid.classList.toggle("hidden", mode !== "threshold");
       els.estimate.textContent = mode === "heatmap" ? "Compute heatmap" : "Estimate";
-      els.replicates.max = mode === "heatmap" ? "20" : "200";
-      if (mode === "heatmap" && Number(els.replicates.value) > 20) els.replicates.value = 20;
+      els.replicates.max = "200";
+      els.replicates.step = mode === "heatmap" ? "10" : "5";
+      els.replicatesLabel.textContent = mode === "heatmap" ? "Sim/cell" : "Seeds";
+      els.replicatesHint.textContent = mode === "heatmap"
+        ? "Independent simulations per heatmap cell; 100 is the default for stable colour estimates."
+        : "Independent seeds for the selected experiment.";
       els.metricFirstLabel.textContent = mode === "heatmap" ? "Cells" : "Blue share";
       els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : mode === "heatmap" ? "Max E[S]" : "Active edges";
       els.metricThirdLabel.textContent = mode === "threshold" ? "Unhappy agents" : mode === "heatmap" ? "Sanity" : "Stop state";
@@ -1385,13 +1400,13 @@
       const cfg = state.config;
       const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
       const values = heatmap?.values || tauGridValues(cfg.heatmapStep);
-      const reps = heatmap?.reps || replicateCount(20);
+      const reps = heatmap?.reps || replicateCount(200);
       const noTargetText = cfg.fallbackRule === "leave" ? "no-target memberships leave the group" : "no-target memberships are restored";
       els.formula.innerHTML = `Fixed parameters for the heatmap: n=${cfg.n}, m=${cfg.m}, p=&lambda;/m=${number(groupProbability, 3)}, p<sub>B</sub>=${number(cfg.pBlue, 2)}. For each cell (&tau;<sub>B</sub>,&tau;<sub>R</sub>), the dashboard estimates E[S], where S is the final fraction of nonempty groups with only blue or only red members; ${noTargetText}.`;
 
       if (!heatmap || !heatmap.done) {
         renderResultItems([
-          `<strong>Heatmap design:</strong> grid step &Delta;&tau;=${number(cfg.heatmapStep, 2)} gives ${values.length} x ${values.length}=${values.length * values.length} cells; the run uses at most ${reps} seeds per cell for responsiveness.`,
+          `<strong>Heatmap design:</strong> grid step &Delta;&tau;=${number(cfg.heatmapStep, 2)} gives ${values.length} x ${values.length}=${values.length * values.length} cells; the run uses ${reps} independent simulations per cell.`,
           `<strong>Update rule:</strong> when a member is unhappy in a group, it moves only if at least one group it does not currently belong to would satisfy its own colour demand after joining; the target is chosen uniformly among those satisfying groups.`,
           `<strong>No-target case:</strong> if there is no satisfying target, including the case where the member already belongs to all m groups, the selected rule is ${cfg.fallbackRule === "leave" ? "to drop that membership" : "to restore that membership and allow blocked stops"}.`,
           `<strong>Sanity check:</strong> after computation, adjacent cells are scanned for large downward dips and the region &tau;<sub>B</sub>,&tau;<sub>R</sub>&gt;0.5 is checked for near-complete segregation. Departures are flagged so they can be separated from Monte Carlo noise or blocked-rule effects.`
@@ -1406,7 +1421,7 @@
         ? "Values below 100% are therefore useful numerical warnings to inspect."
         : "If this is below 100%, inspect blocked runs and finite m constraints.";
       renderResultItems([
-        `<strong>Heatmap estimate:</strong> ${heatmap.cellsDone} cells completed with ${heatmap.reps} seeds per cell; E[S] ranges from ${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}.`,
+        `<strong>Heatmap estimate:</strong> ${heatmap.cellsDone} cells completed with ${heatmap.reps} simulations per cell; E[S] ranges from ${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}.`,
         `<strong>High-demand check:</strong> among sampled cells with &tau;<sub>B</sub>,&tau;<sub>R</sub>&gt;0.5, ${highDemandText}. ${highDemandCaveat}`,
         `<strong>Monotonicity check:</strong> ${heatmap.monotoneViolations ? `${heatmap.monotoneViolations} adjacent decreases exceed 4 percentage points` : "no adjacent decreases exceed 4 percentage points"} for E[S] on the sampled grid.`,
         `<strong>Research output:</strong> export the CSV to fit or report the surface (&tau;<sub>B</sub>,&tau;<sub>R</sub>, E[S]) together with P(no happy move), stopping time, and the size-at-least-two segregation diagnostic.`
@@ -1926,7 +1941,7 @@
     }
 
     function tauGridValues(step) {
-      const value = clamp(Number(step) || 0.10, 0.10, 0.25);
+      const value = clamp(Number(step) || 0.10, 0.05, 0.25);
       const values = [];
       for (let tau = 0; tau < 1 - 1e-9; tau += value) {
         values.push(Number(tau.toFixed(2)));
@@ -1941,6 +1956,7 @@
         ...configExportFields(config),
         heatmap_step: step,
         reps,
+        simulations_per_cell: reps,
         ...summaryFields(results, "happy", "p_happy"),
         ...summaryFields(results, "blocked", "p_blocked"),
         ...summaryFields(results, "maxedOut", "p_max_updates"),
@@ -1999,7 +2015,7 @@
         ? "not sampled"
         : `${percent(heatmap.minHighDemand)} minimum; mean blocked ${percent(heatmap.meanHighDemandBlocked)}`;
       const rows = [
-        ["Grid", `${heatmap.values.length} x ${heatmap.values.length} cells, ${heatmap.reps} seeds per cell`],
+        ["Grid", `${heatmap.values.length} x ${heatmap.values.length} cells, ${heatmap.reps} simulations per cell`],
         ["No-target rule", heatmap.baseConfig.fallbackRule === "leave" ? "leave group" : "block move"],
         ["E[S] range", `${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}`],
         ["High-demand min", highDemandText],
@@ -2081,7 +2097,7 @@
       const baseConfig = configFromControls();
       const step = baseConfig.heatmapStep;
       const values = tauGridValues(step);
-      const reps = replicateCount(20);
+      const reps = replicateCount(200);
       const totalCells = values.length * values.length;
       const heatmap = {
         running: true,
@@ -2101,7 +2117,7 @@
       state.running = false;
       setExport(null);
       setExperimentBusy(true);
-      els.ensemble.textContent = `Computing heatmap: ${totalCells} cells x ${reps} seeds = ${totalCells * reps} simulations.`;
+      els.ensemble.textContent = `Computing heatmap: ${totalCells} cells x ${reps} simulations per cell = ${totalCells * reps} simulations.`;
       updateReadout();
       renderScene();
 
@@ -2403,7 +2419,7 @@
       sceneCtx.fillText("Heatmap of final segregation E[S]", titleX, 32);
       sceneCtx.font = "12px Inter, system-ui, sans-serif";
       sceneCtx.fillStyle = "#5c6678";
-      const repsText = heatmap ? `${heatmap.reps} seeds per cell` : "choose Compute heatmap";
+      const repsText = heatmap ? `${heatmap.reps} simulations per cell` : "choose Compute heatmap";
       sceneCtx.fillText(`fixed n=${state.config.n}, m=${state.config.m}, lambda=${number(state.config.lambda, 2)}, p_B=${number(state.config.pBlue, 2)}; ${repsText}; ${state.config.fallbackRule}`, titleX, 52);
 
       for (let row = 0; row < rows; row += 1) {
@@ -2470,7 +2486,7 @@
         sceneCtx.fillText("Ready for threshold surface estimation", x + width / 2, y + 30);
         sceneCtx.font = "12px Inter, system-ui, sans-serif";
         sceneCtx.fillStyle = "#5c6678";
-        sceneCtx.fillText(`${rows * cols} cells; ${replicateCount(20)} seeded simulations per cell`, x + width / 2, y + 52);
+        sceneCtx.fillText(`${rows * cols} cells; ${replicateCount(200)} simulations per cell`, x + width / 2, y + 52);
         sceneCtx.textAlign = "left";
       }
       sceneCtx.restore();
@@ -2831,6 +2847,14 @@
     function setMode(nextMode) {
       experimentToken += 1;
       setExperimentBusy(false);
+      const previousMode = mode;
+      if (nextMode === "heatmap" && previousMode !== "heatmap") {
+        els.replicates.dataset.previousValue = els.replicates.value;
+        els.replicates.value = els.replicates.dataset.heatmapValue || "100";
+      } else if (previousMode === "heatmap" && nextMode !== "heatmap") {
+        els.replicates.dataset.heatmapValue = els.replicates.value;
+        els.replicates.value = els.replicates.dataset.previousValue || "40";
+      }
       mode = nextMode;
       for (const tab of els.tabs) {
         tab.classList.toggle("active", tab.dataset.mode === mode);

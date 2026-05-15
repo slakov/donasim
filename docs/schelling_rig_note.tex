@@ -315,6 +315,8 @@ $$
 $$
 where $S$ is the final fraction of non-empty cliques that are monochromatic. This gives a heat map with coordinates $(\tau_B,\tau_R)$ and colour $\mathbb{E}[S]$. Useful additional diagnostics include the same share restricted to cliques of size at least two so that singleton groups do not artificially inflate segregation, the numbers of blue-only and red-only cliques, colour-specific counts of unhappy individuals, stopping times, and the probability of blocked runs in which no satisfying move is available. As a sanity check, segregation should increase as the two demands increase and should be close to complete when both thresholds are above $1/2$ under the default leave-group rule; in finite simulations with the conservative blocked rule, deviations from this check can occur when no satisfying target group is available.
 
+In the browser implementation, the default heat map uses grid spacing $\Delta\tau=0.10$ and 100 simulations per grid point. A finer option $\Delta\tau=0.05$ is also available for producing smoother numerical surfaces, at the cost of increasing the number of grid points from 121 to 441.
+
 
 \subsection{The reversible chain}
 
