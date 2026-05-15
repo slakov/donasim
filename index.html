@@ -35,7 +35,8 @@
     }
 
     button,
-    input {
+    input,
+    select {
       font: inherit;
     }
 
@@ -173,7 +174,8 @@
       accent-color: var(--blue);
     }
 
-    input[type="number"] {
+    input[type="number"],
+    select {
       width: 100%;
       min-height: 38px;
       border: 1px solid var(--line);
@@ -507,6 +509,7 @@
       </div>
       <nav class="tabs" aria-label="Simulation mode">
         <button class="tab active" type="button" data-mode="threshold">Tolerance threshold</button>
+        <button class="tab" type="button" data-mode="heatmap">Heatmap plot</button>
         <button class="tab" type="button" data-mode="voter">Voter model</button>
       </nav>
     </header>
@@ -545,6 +548,21 @@
           <small>Minimum red fraction required in each group membership; the diagonal case is &tau;<sub>B</sub>=&tau;<sub>R</sub>.</small>
         </label>
 
+        <label class="control hidden" id="heatmapStepControl">
+          <span class="control-row"><span><strong>&Delta;&tau;</strong> heatmap step</span><output id="heatmapStepOut"></output></span>
+          <input id="heatmapStep" type="range" min="0.10" max="0.25" step="0.05" value="0.10">
+          <small>Resolution for the (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Default 0.10 gives 121 cells.</small>
+        </label>
+
+        <label class="control" id="fallbackControl">
+          <span class="control-row"><span>No-target rule</span></span>
+          <select id="fallbackRule">
+            <option value="leave" selected>Leave group</option>
+            <option value="block">Block move</option>
+          </select>
+          <small>If no satisfying target group exists, either drop that unhappy membership or keep it and allow blocked stops.</small>
+        </label>
+
         <label class="control" id="joinControl">
           <span class="control-row"><span><strong>&gamma;</strong> VM join rate</span><output id="joinOut"></output></span>
           <input id="joinRate" type="range" min="0" max="1" step="0.01" value="0.25">
@@ -563,7 +581,7 @@
           <small>Initial Bernoulli probability that a member has blue opinion.</small>
         </label>
 
-        <label class="control">
+        <label class="control" id="speedControl">
           <span class="control-row"><span>Update speed</span><output id="speedOut"></output></span>
           <input id="speed" type="range" min="1" max="9" step="1" value="5">
           <small>Number of simulated update attempts per animation frame.</small>
@@ -575,7 +593,7 @@
           <small>Fixes the random graph and initial opinions for reproducible runs.</small>
         </label>
 
-        <div class="actions">
+        <div class="actions" id="actionControls">
           <button id="run" type="button">Run</button>
           <button id="step" type="button">Step</button>
           <button id="reset" type="button">Reset</button>
@@ -591,7 +609,7 @@
       <aside class="panel readout" aria-label="Readout">
         <h2>Readout</h2>
         <dl class="metrics">
-          <div class="metric"><dt>Blue share</dt><dd id="metricBlue">0%</dd></div>
+          <div class="metric"><dt id="metricFirstLabel">Blue share</dt><dd id="metricBlue">0%</dd></div>
           <div class="metric"><dt id="metricSecondLabel">Segregated cliques</dt><dd id="metricSecond">0%</dd></div>
           <div class="metric"><dt id="metricThirdLabel">Unhappy agents</dt><dd id="metricThird">0</dd></div>
           <div class="metric"><dt>Updates</dt><dd id="metricUpdates">0</dd></div>
@@ -648,6 +666,8 @@
       lambda: document.getElementById("lambda"),
       tauBlue: document.getElementById("tauBlue"),
       tauRed: document.getElementById("tauRed"),
+      heatmapStep: document.getElementById("heatmapStep"),
+      fallbackRule: document.getElementById("fallbackRule"),
       joinRate: document.getElementById("joinRate"),
       leaveRate: document.getElementById("leaveRate"),
       blue: document.getElementById("blue"),
@@ -655,13 +675,18 @@
       seed: document.getElementById("seed"),
       tauBlueControl: document.getElementById("tauBlueControl"),
       tauRedControl: document.getElementById("tauRedControl"),
+      heatmapStepControl: document.getElementById("heatmapStepControl"),
+      fallbackControl: document.getElementById("fallbackControl"),
       joinControl: document.getElementById("joinControl"),
       leaveControl: document.getElementById("leaveControl"),
+      speedControl: document.getElementById("speedControl"),
+      actionControls: document.getElementById("actionControls"),
       agentsOut: document.getElementById("agentsOut"),
       cliquesOut: document.getElementById("cliquesOut"),
       lambdaOut: document.getElementById("lambdaOut"),
       tauBlueOut: document.getElementById("tauBlueOut"),
       tauRedOut: document.getElementById("tauRedOut"),
+      heatmapStepOut: document.getElementById("heatmapStepOut"),
       joinOut: document.getElementById("joinOut"),
       leaveOut: document.getElementById("leaveOut"),
       blueOut: document.getElementById("blueOut"),
@@ -672,6 +697,7 @@
       newSeed: document.getElementById("newSeed"),
       statusDot: document.getElementById("statusDot"),
       statusText: document.getElementById("statusText"),
+      metricFirstLabel: document.getElementById("metricFirstLabel"),
       metricBlue: document.getElementById("metricBlue"),
       metricSecond: document.getElementById("metricSecond"),
       metricThird: document.getElementById("metricThird"),
@@ -695,6 +721,7 @@
     let rng = mulberry32(42);
     let state = null;
     let lastExport = null;
+    let experimentToken = 0;
     let view = { width: 900, height: 620, dpr: 1 };
 
     function mulberry32(seed) {
@@ -730,6 +757,8 @@
         lambda: Number(els.lambda.value),
         tauBlue: Number(els.tauBlue.value),
         tauRed: Number(els.tauRed.value),
+        heatmapStep: Number(els.heatmapStep.value),
+        fallbackRule: els.fallbackRule.value,
         joinRate: Number(els.joinRate.value),
         leaveRate: Number(els.leaveRate.value),
         pBlue: Number(els.blue.value),
@@ -744,6 +773,7 @@
       els.lambdaOut.textContent = Number(els.lambda.value).toFixed(1);
       els.tauBlueOut.textContent = Number(els.tauBlue.value).toFixed(2);
       els.tauRedOut.textContent = Number(els.tauRed.value).toFixed(2);
+      els.heatmapStepOut.textContent = Number(els.heatmapStep.value).toFixed(2);
       els.joinOut.textContent = Number(els.joinRate.value).toFixed(2);
       els.leaveOut.textContent = Number(els.leaveRate.value).toFixed(2);
       els.blueOut.textContent = percent(Number(els.blue.value));
@@ -788,6 +818,7 @@
     }
 
     function resetSimulation(startRunning = false) {
+      experimentToken += 1;
       const config = configFromControls();
       rng = mulberry32(config.seed);
       state = {
@@ -804,20 +835,33 @@
         lastJoins: 0,
         lastLeaves: 0,
         history: [],
-        metrics: null
+        metrics: null,
+        heatmap: null
       };
 
       els.tauBlueControl.classList.toggle("hidden", mode !== "threshold");
       els.tauRedControl.classList.toggle("hidden", mode !== "threshold");
+      els.heatmapStepControl.classList.toggle("hidden", mode !== "heatmap");
+      els.fallbackControl.classList.toggle("hidden", mode === "voter");
       els.joinControl.classList.toggle("hidden", mode !== "voter");
       els.leaveControl.classList.toggle("hidden", mode !== "voter");
+      els.speedControl.classList.toggle("hidden", mode === "heatmap");
+      els.actionControls.classList.toggle("hidden", mode === "heatmap");
       els.sweepTau.classList.toggle("hidden", mode !== "threshold");
       els.sweepTauGrid.classList.toggle("hidden", mode !== "threshold");
-      els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : "Active edges";
-      els.metricThirdLabel.textContent = mode === "threshold" ? "Unhappy agents" : "Stop state";
-      els.ensemble.textContent = mode === "threshold"
-        ? "Run an estimate, a diagonal sweep, or a two-threshold grid to aggregate this parameter point over many seeds."
-        : "Run an estimate to aggregate voter absorption over many seeds.";
+      els.estimate.textContent = mode === "heatmap" ? "Compute heatmap" : "Estimate";
+      els.replicates.max = mode === "heatmap" ? "20" : "200";
+      if (mode === "heatmap" && Number(els.replicates.value) > 20) els.replicates.value = 20;
+      els.metricFirstLabel.textContent = mode === "heatmap" ? "Cells" : "Blue share";
+      els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : mode === "heatmap" ? "Max E[S]" : "Active edges";
+      els.metricThirdLabel.textContent = mode === "threshold" ? "Unhappy agents" : mode === "heatmap" ? "Sanity" : "Stop state";
+      if (mode === "threshold") {
+        els.ensemble.textContent = "Run an estimate, a diagonal sweep, or a two-threshold grid to aggregate this parameter point over many seeds.";
+      } else if (mode === "heatmap") {
+        els.ensemble.innerHTML = "Compute the heatmap to estimate E[S] on a (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. The colour uses all nonempty groups, as in the colleague request; the CSV also records the size-at-least-two diagnostic.";
+      } else {
+        els.ensemble.textContent = "Run an estimate to aggregate voter absorption over many seeds.";
+      }
       setExport(null);
 
       for (let i = 0; i < config.m; i += 1) {
@@ -1030,33 +1074,30 @@
       return pairs;
     }
 
-    function chooseTargetGroup(node) {
-      const preferred = [];
+    function chooseTargetGroup(node, excludeGroupId = null) {
+      const candidates = [];
 
       for (const group of state.groups) {
+        if (group.id === excludeGroupId) continue;
         if (node.groups.has(group.id)) continue;
         const share = shareIfJoined(node, group);
-        const balance = 1 / Math.sqrt(group.members.size + 1);
-        const entry = { group, score: share + 0.08 * balance + rng() * 0.015 };
-        if (share + 1e-9 >= demandForColor(node.color)) preferred.push(entry);
+        if (share + 1e-9 >= demandForColor(node.color)) candidates.push(group);
       }
 
-      const pool = preferred
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 4);
-      if (!pool.length) return null;
-      return pool[Math.floor(rng() * pool.length)].group;
+      if (!candidates.length) return null;
+      return candidates[Math.floor(rng() * candidates.length)];
     }
 
     function relocateMembership(node, fromGroup) {
       removeNodeFromGroup(node, fromGroup);
       recountGroup(fromGroup);
-      const target = chooseTargetGroup(node);
+      const target = chooseTargetGroup(node, fromGroup.id);
       if (target) {
         addNodeToGroup(node, target);
         recountGroup(target);
         return true;
       }
+      if (state.config.fallbackRule === "leave") return true;
       addNodeToGroup(node, fromGroup);
       recountGroup(fromGroup);
       return false;
@@ -1289,6 +1330,26 @@
     }
 
     function updateReadout() {
+      if (mode === "heatmap") {
+        const heatmap = state.heatmap;
+        const values = heatmap?.values || tauGridValues(state.config.heatmapStep);
+        const totalCells = heatmap?.totalCells || values.length * values.length;
+        const cellsDone = heatmap?.cellsDone || 0;
+        els.metricBlue.textContent = `${cellsDone}/${totalCells}`;
+        els.metricSecond.textContent = heatmap?.cells.length ? percent(heatmap.maxSegregatedShare) : "--";
+        els.metricThird.textContent = heatmap?.done
+          ? heatmap.monotoneViolations ? `${heatmap.monotoneViolations} dips` : "OK"
+          : "pending";
+        els.metricUpdates.textContent = String(heatmap?.simulationsDone || 0);
+        setStatus(
+          heatmap?.running ? `Computing heatmap ${cellsDone}/${totalCells}` : heatmap?.done ? "Heatmap ready" : "Heatmap setup",
+          heatmap?.running ? "running" : heatmap?.done ? "done" : ""
+        );
+        updateHeatmapInterpretation(heatmap);
+        updateRunButton();
+        return;
+      }
+
       const metrics = state.metrics || computeMetrics();
       els.metricBlue.textContent = percent(metrics.blueShare);
       els.metricUpdates.textContent = String(state.tick);
@@ -1320,6 +1381,38 @@
       els.interpretation.innerHTML = items.map(item => `<li>${item}</li>`).join("");
     }
 
+    function updateHeatmapInterpretation(heatmap) {
+      const cfg = state.config;
+      const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
+      const values = heatmap?.values || tauGridValues(cfg.heatmapStep);
+      const reps = heatmap?.reps || replicateCount(20);
+      const noTargetText = cfg.fallbackRule === "leave" ? "no-target memberships leave the group" : "no-target memberships are restored";
+      els.formula.innerHTML = `Fixed parameters for the heatmap: n=${cfg.n}, m=${cfg.m}, p=&lambda;/m=${number(groupProbability, 3)}, p<sub>B</sub>=${number(cfg.pBlue, 2)}. For each cell (&tau;<sub>B</sub>,&tau;<sub>R</sub>), the dashboard estimates E[S], where S is the final fraction of nonempty groups with only blue or only red members; ${noTargetText}.`;
+
+      if (!heatmap || !heatmap.done) {
+        renderResultItems([
+          `<strong>Heatmap design:</strong> grid step &Delta;&tau;=${number(cfg.heatmapStep, 2)} gives ${values.length} x ${values.length}=${values.length * values.length} cells; the run uses at most ${reps} seeds per cell for responsiveness.`,
+          `<strong>Update rule:</strong> when a member is unhappy in a group, it moves only if at least one group it does not currently belong to would satisfy its own colour demand after joining; the target is chosen uniformly among those satisfying groups.`,
+          `<strong>No-target case:</strong> if there is no satisfying target, including the case where the member already belongs to all m groups, the selected rule is ${cfg.fallbackRule === "leave" ? "to drop that membership" : "to restore that membership and allow blocked stops"}.`,
+          `<strong>Sanity check:</strong> after computation, adjacent cells are scanned for large downward dips and the region &tau;<sub>B</sub>,&tau;<sub>R</sub>&gt;0.5 is checked for near-complete segregation. Departures are flagged so they can be separated from Monte Carlo noise or blocked-rule effects.`
+        ]);
+        return;
+      }
+
+      const highDemandText = heatmap.minHighDemand === null
+        ? "not sampled"
+        : `${percent(heatmap.minHighDemand)} minimum E[S] with mean blocked probability ${percent(heatmap.meanHighDemandBlocked)}`;
+      const highDemandCaveat = cfg.fallbackRule === "leave"
+        ? "Values below 100% are therefore useful numerical warnings to inspect."
+        : "If this is below 100%, inspect blocked runs and finite m constraints.";
+      renderResultItems([
+        `<strong>Heatmap estimate:</strong> ${heatmap.cellsDone} cells completed with ${heatmap.reps} seeds per cell; E[S] ranges from ${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}.`,
+        `<strong>High-demand check:</strong> among sampled cells with &tau;<sub>B</sub>,&tau;<sub>R</sub>&gt;0.5, ${highDemandText}. ${highDemandCaveat}`,
+        `<strong>Monotonicity check:</strong> ${heatmap.monotoneViolations ? `${heatmap.monotoneViolations} adjacent decreases exceed 4 percentage points` : "no adjacent decreases exceed 4 percentage points"} for E[S] on the sampled grid.`,
+        `<strong>Research output:</strong> export the CSV to fit or report the surface (&tau;<sub>B</sub>,&tau;<sub>R</sub>, E[S]) together with P(no happy move), stopping time, and the size-at-least-two segregation diagnostic.`
+      ]);
+    }
+
     function updateInterpretation(metrics) {
       const cfg = state.config;
       const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
@@ -1329,12 +1422,16 @@
         : state.running ? "running" : "paused";
 
       els.formula.innerHTML = mode === "threshold"
-        ? `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Demands: &tau;<sub>B</sub>=${number(cfg.tauBlue, 2)}, &tau;<sub>R</sub>=${number(cfg.tauRed, 2)}. Same-colour shares use the manuscript convention x/(x+y), including the focal member. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Initial E[edge density] = ${number(metrics.expectedEdgeDensity, 3)}; observed |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`
+        ? `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Demands: &tau;<sub>B</sub>=${number(cfg.tauBlue, 2)}, &tau;<sub>R</sub>=${number(cfg.tauRed, 2)}. Same-colour shares use the manuscript convention x/(x+y), including the focal member. No-target rule: ${cfg.fallbackRule === "leave" ? "leave group" : "block move"}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Initial E[edge density] = ${number(metrics.expectedEdgeDensity, 3)}; observed |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`
         : `Initial RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Dynamic VM graph: join rate &gamma;=${number(cfg.joinRate, 2)}, leave rate &mu;=${number(cfg.leaveRate, 2)}. Initial E[degree] = ${number(metrics.expectedDegree, 2)}; observed mean |C(t)| = ${number(metrics.meanGroupSize, 2)}; projected density |E(t)|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`;
 
       if (mode === "threshold") {
+        const fallbackText = cfg.fallbackRule === "leave"
+          ? "If none exists, including when the member is already in all m groups, that unhappy membership is dropped."
+          : "If none exists, including when the member is already in all m groups, the member stays in the old group.";
         renderResultItems([
           `<strong>Stopping statistic:</strong> ${stopText}; ${metrics.unhappyAgents} unhappy agents remain (${metrics.unhappyBlueAgents} blue, ${metrics.unhappyRedAgents} red) across ${metrics.unhappy} unhappy memberships.`,
+          `<strong>Update rule:</strong> an unhappy membership searches the groups the member does not currently belong to; if at least one would satisfy that member's own demand after joining, the target group is sampled uniformly. ${fallbackText}`,
           `<strong>Segregation observable:</strong> ${metrics.segregatedGroups}/${metrics.nonemptyGroups} nonempty groups are monochromatic (${percent(metrics.segregatedShare)}), including ${metrics.singletonGroups} singleton groups. Among groups of size at least 2, ${metrics.nontrivialSegregatedGroups}/${metrics.nontrivialGroups} are monochromatic (${percent(metrics.nontrivialSegregatedShare)}).`,
           `<strong>Colour balance:</strong> final monochromatic groups split into ${metrics.blueOnlyGroups} blue-only and ${metrics.redOnlyGroups} red-only; ${metrics.mixedGroups} mixed groups remain. Mixed groups can be absorbing when both colours meet their own demand.`,
           `<strong>Network observable:</strong> ${metrics.activeEdges} opposite-colour projected edges remain (${percent(metrics.activeShare)} of projected edges); ${metrics.isolated} isolated members.`,
@@ -1516,16 +1613,13 @@
     }
 
     function batchChooseTarget(model, node, config) {
-      const preferred = [];
+      const candidates = [];
       for (const group of model.groups) {
         if (node.groups.has(group.id)) continue;
         const share = batchShareIfJoined(node, group);
-        const balance = 1 / Math.sqrt(group.members.size + 1);
-        if (share + 1e-9 >= demandForColor(node.color, config)) preferred.push({ group, score: share + 0.08 * balance + model.random() * 0.015 });
+        if (share + 1e-9 >= demandForColor(node.color, config)) candidates.push(group);
       }
-      preferred.sort((a, b) => b.score - a.score);
-      const pool = preferred.slice(0, 4);
-      return pool.length ? pool[Math.floor(model.random() * pool.length)].group : null;
+      return candidates.length ? candidates[Math.floor(model.random() * candidates.length)] : null;
     }
 
     function batchThresholdMetrics(model, config, updates, blocked, maxedOut) {
@@ -1578,6 +1672,7 @@
         nontrivialSegregatedGroups,
         nontrivialSegregatedShare: nontrivialGroups ? nontrivialSegregatedGroups / nontrivialGroups : 0,
         mixedGroups,
+        nonemptyGroups,
         unhappyAgents: model.nodes.filter(node => node.unhappy).length,
         unhappyBlueAgents: model.nodes.filter(node => node.unhappy && node.color).length,
         unhappyRedAgents: model.nodes.filter(node => node.unhappy && !node.color).length,
@@ -1605,10 +1700,20 @@
         for (const [node, group] of pairs) {
           if (!node.groups.has(group.id) || batchSameShare(model, node, group) + 1e-9 >= demandForColor(node.color, config)) continue;
           const target = batchChooseTarget(model, node, config);
-          if (!target) continue;
           node.groups.delete(group.id);
           group.members.delete(node.id);
           recountBatchGroup(model, group);
+          if (!target) {
+            if (config.fallbackRule !== "leave") {
+              node.groups.add(group.id);
+              group.members.add(node.id);
+              recountBatchGroup(model, group);
+              continue;
+            }
+            updates += 1;
+            moved = true;
+            break;
+          }
           node.groups.add(target.id);
           target.members.add(node.id);
           recountBatchGroup(model, target);
@@ -1800,6 +1905,7 @@
         lambda: config.lambda,
         tau_B: config.tauBlue,
         tau_R: config.tauRed,
+        fallback_rule: config.fallbackRule,
         gamma: config.joinRate,
         mu: config.leaveRate,
         p_B: config.pBlue
@@ -1817,6 +1923,90 @@
     function firstCrossing(rows, key, level) {
       const hit = rows.find(row => row[key] >= level);
       return hit ? number(hit.tau_B, 2) : "not in sampled range";
+    }
+
+    function tauGridValues(step) {
+      const value = clamp(Number(step) || 0.10, 0.10, 0.25);
+      const values = [];
+      for (let tau = 0; tau < 1 - 1e-9; tau += value) {
+        values.push(Number(tau.toFixed(2)));
+      }
+      if (values[values.length - 1] !== 1) values.push(1);
+      return values;
+    }
+
+    function heatmapCellSummary(results, config, reps, step) {
+      return {
+        experiment: "threshold-heatmap",
+        ...configExportFields(config),
+        heatmap_step: step,
+        reps,
+        ...summaryFields(results, "happy", "p_happy"),
+        ...summaryFields(results, "blocked", "p_blocked"),
+        ...summaryFields(results, "maxedOut", "p_max_updates"),
+        ...summaryFields(results, "segregatedShare", "segregated_share"),
+        ...summaryFields(results, "nontrivialSegregatedShare", "nontrivial_segregated_share"),
+        ...summaryFields(results, "activeShare", "active_edge_share"),
+        ...summaryFields(results, "updates", "updates"),
+        ...summaryFields(results, "unhappyAgents", "unhappy_agents"),
+        ...summaryFields(results, "blueOnlyGroups", "blue_only_groups"),
+        ...summaryFields(results, "redOnlyGroups", "red_only_groups"),
+        ...summaryFields(results, "singletonGroups", "singleton_groups"),
+        ...summaryFields(results, "nonemptyGroups", "nonempty_groups")
+      };
+    }
+
+    function countMonotoneDips(heatmap, tolerance = 0.04) {
+      let dips = 0;
+      for (let row = 0; row < heatmap.values.length; row += 1) {
+        for (let col = 0; col < heatmap.values.length; col += 1) {
+          const cell = heatmap.grid[row][col];
+          if (!cell) continue;
+          const value = cell.segregated_share_mean;
+          const up = heatmap.grid[row + 1]?.[col];
+          const right = heatmap.grid[row]?.[col + 1];
+          if (up && up.segregated_share_mean + tolerance < value) dips += 1;
+          if (right && right.segregated_share_mean + tolerance < value) dips += 1;
+        }
+      }
+      return dips;
+    }
+
+    function updateHeatmapDerived(heatmap) {
+      const cells = heatmap.cells;
+      if (!cells.length) {
+        heatmap.maxSegregatedShare = 0;
+        heatmap.minSegregatedShare = 0;
+        heatmap.minHighDemand = null;
+        heatmap.meanBlocked = 0;
+        heatmap.meanHighDemandBlocked = null;
+        heatmap.monotoneViolations = 0;
+        return;
+      }
+      heatmap.maxSegregatedShare = Math.max(...cells.map(cell => cell.segregated_share_mean));
+      heatmap.minSegregatedShare = Math.min(...cells.map(cell => cell.segregated_share_mean));
+      heatmap.meanBlocked = cells.reduce((sum, cell) => sum + cell.p_blocked_mean, 0) / cells.length;
+      const highDemand = cells.filter(cell => cell.tau_B > 0.5 && cell.tau_R > 0.5);
+      heatmap.minHighDemand = highDemand.length ? Math.min(...highDemand.map(cell => cell.segregated_share_mean)) : null;
+      heatmap.meanHighDemandBlocked = highDemand.length
+        ? highDemand.reduce((sum, cell) => sum + cell.p_blocked_mean, 0) / highDemand.length
+        : null;
+      heatmap.monotoneViolations = heatmap.done ? countMonotoneDips(heatmap) : 0;
+    }
+
+    function renderHeatmapExperimentSummary(heatmap) {
+      const highDemandText = heatmap.minHighDemand === null
+        ? "not sampled"
+        : `${percent(heatmap.minHighDemand)} minimum; mean blocked ${percent(heatmap.meanHighDemandBlocked)}`;
+      const rows = [
+        ["Grid", `${heatmap.values.length} x ${heatmap.values.length} cells, ${heatmap.reps} seeds per cell`],
+        ["No-target rule", heatmap.baseConfig.fallbackRule === "leave" ? "leave group" : "block move"],
+        ["E[S] range", `${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}`],
+        ["High-demand min", highDemandText],
+        ["Monotone dips", heatmap.monotoneViolations ? `${heatmap.monotoneViolations} over 4 pp` : "none over 4 pp"],
+        ["Mean P(blocked)", percent(heatmap.meanBlocked)]
+      ];
+      els.ensemble.innerHTML = `Heatmap completed for fixed n=${heatmap.baseConfig.n}, m=${heatmap.baseConfig.m}, &lambda;=${number(heatmap.baseConfig.lambda, 2)}, and p<sub>B</sub>=${number(heatmap.baseConfig.pBlue, 2)}. Cell colour is E[S], where S is the final fraction of nonempty monochromatic groups. CSV export also includes the size-at-least-two segregation share and blocked-run probability.${tableHtml(["Diagnostic", "Value"], rows)}${exportNote()}`;
     }
 
     function renderCurrentEstimate(results, config, estimateMode) {
@@ -1862,30 +2052,128 @@
     }
 
     function runCurrentEstimate() {
+      if (mode === "heatmap") {
+        runHeatmap();
+        return;
+      }
+      const token = ++experimentToken;
       const config = configFromControls();
       const estimateMode = mode;
       const reps = replicateCount(200);
       els.ensemble.textContent = "Calculating seeded ensemble...";
       setExperimentBusy(true);
       setTimeout(() => {
+        if (token !== experimentToken) return;
         const results = [];
         for (let i = 0; i < reps; i += 1) {
           const seed = config.seed + 1009 * i;
           const result = estimateMode === "threshold" ? simulateThresholdBatch(config, seed) : simulateVoterBatch(config, seed);
           results.push({ seed, ...result });
         }
+        if (token !== experimentToken) return;
         renderCurrentEstimate(results, config, estimateMode);
         setExperimentBusy(false);
       }, 20);
     }
 
+    function runHeatmap() {
+      const token = ++experimentToken;
+      const baseConfig = configFromControls();
+      const step = baseConfig.heatmapStep;
+      const values = tauGridValues(step);
+      const reps = replicateCount(20);
+      const totalCells = values.length * values.length;
+      const heatmap = {
+        running: true,
+        done: false,
+        values,
+        grid: Array.from({ length: values.length }, () => Array(values.length).fill(null)),
+        cells: [],
+        cellsDone: 0,
+        totalCells,
+        simulationsDone: 0,
+        reps,
+        baseConfig,
+        step
+      };
+
+      state.heatmap = heatmap;
+      state.running = false;
+      setExport(null);
+      setExperimentBusy(true);
+      els.ensemble.textContent = `Computing heatmap: ${totalCells} cells x ${reps} seeds = ${totalCells * reps} simulations.`;
+      updateReadout();
+      renderScene();
+
+      let row = 0;
+      let col = 0;
+      const computeChunk = () => {
+        if (token !== experimentToken || mode !== "heatmap") {
+          heatmap.running = false;
+          setExperimentBusy(false);
+          return;
+        }
+        const chunkStart = performance.now();
+        while (row < values.length && performance.now() - chunkStart < 34) {
+          const tauBlue = values[row];
+          const tauRed = values[col];
+          const config = { ...baseConfig, tauBlue, tauRed };
+          const results = [];
+          const offset = Math.round(tauBlue * 10000) + Math.round(tauRed * 100000);
+          for (let i = 0; i < reps; i += 1) {
+            const seed = config.seed + 1009 * i + offset;
+            results.push({ seed, ...simulateThresholdBatch(config, seed) });
+          }
+
+          const cell = heatmapCellSummary(results, config, reps, step);
+          heatmap.grid[row][col] = cell;
+          heatmap.cells.push(cell);
+          heatmap.cellsDone += 1;
+          heatmap.simulationsDone += reps;
+
+          col += 1;
+          if (col >= values.length) {
+            col = 0;
+            row += 1;
+          }
+        }
+
+        updateHeatmapDerived(heatmap);
+        updateReadout();
+        renderScene();
+
+        if (row < values.length) {
+          setTimeout(computeChunk, 0);
+          return;
+        }
+
+        if (token !== experimentToken || mode !== "heatmap") {
+          heatmap.running = false;
+          setExperimentBusy(false);
+          return;
+        }
+        heatmap.running = false;
+        heatmap.done = true;
+        updateHeatmapDerived(heatmap);
+        setExport({ filename: `rig-threshold-heatmap-seed-${baseConfig.seed}.csv`, rows: heatmap.cells });
+        renderHeatmapExperimentSummary(heatmap);
+        setExperimentBusy(false);
+        updateReadout();
+        renderScene();
+      };
+
+      setTimeout(computeChunk, 20);
+    }
+
     function runTauSweep() {
+      const token = ++experimentToken;
       const baseConfig = configFromControls();
       const reps = replicateCount(60);
       const taus = [0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00];
       els.ensemble.textContent = "Calculating diagonal demand sweep...";
       setExperimentBusy(true);
       setTimeout(() => {
+        if (token !== experimentToken) return;
         const rows = [];
         const exportRows = [];
         for (const tau of taus) {
@@ -1921,6 +2209,7 @@
             estimateText(summarize(results, "blocked"), 0, 100, "%")
           ]);
         }
+        if (token !== experimentToken) return;
         setExport({ filename: `rig-diagonal-sweep-seed-${baseConfig.seed}.csv`, rows: exportRows });
         const tau50 = firstCrossing(exportRows, "segregated_share_mean", 0.5);
         const tau90 = firstCrossing(exportRows, "segregated_share_mean", 0.9);
@@ -1932,12 +2221,14 @@
     }
 
     function runTauGrid() {
+      const token = ++experimentToken;
       const baseConfig = configFromControls();
       const reps = replicateCount(30);
       const taus = [0, 0.25, 0.35, 0.50, 0.65, 0.80, 1.00];
       els.ensemble.textContent = "Calculating two-threshold grid...";
       setExperimentBusy(true);
       setTimeout(() => {
+        if (token !== experimentToken) return;
         const rows = [];
         const exportRows = [];
         for (const tauBlue of taus) {
@@ -1971,6 +2262,7 @@
           }
           rows.push(row);
         }
+        if (token !== experimentToken) return;
         setExport({ filename: `rig-threshold-grid-seed-${baseConfig.seed}.csv`, rows: exportRows });
         const sorted = exportRows.slice().sort((a, b) => b.nontrivial_segregated_share_mean - a.nontrivial_segregated_share_mean);
         const strongest = sorted[0];
@@ -2046,7 +2338,9 @@
       sceneCtx.clearRect(0, 0, view.width, view.height);
       drawBackdrop();
 
-      if (mode === "threshold") {
+      if (mode === "heatmap") {
+        drawHeatmap();
+      } else if (mode === "threshold") {
         drawGroups();
         drawCliqueMembershipDots();
         drawEdges();
@@ -2058,6 +2352,146 @@
 
       if (state.settled) drawEndingLabel();
       renderChart();
+    }
+
+    function mixRgb(a, b, t) {
+      return [
+        Math.round(a[0] + (b[0] - a[0]) * t),
+        Math.round(a[1] + (b[1] - a[1]) * t),
+        Math.round(a[2] + (b[2] - a[2]) * t)
+      ];
+    }
+
+    function heatColor(value) {
+      const stops = [
+        { t: 0, rgb: [248, 250, 252] },
+        { t: 0.35, rgb: [245, 158, 11] },
+        { t: 0.7, rgb: [31, 157, 114] },
+        { t: 1, rgb: [37, 99, 235] }
+      ];
+      const v = clamp(value || 0, 0, 1);
+      for (let i = 0; i < stops.length - 1; i += 1) {
+        const left = stops[i];
+        const right = stops[i + 1];
+        if (v <= right.t) {
+          const local = (v - left.t) / (right.t - left.t);
+          const rgb = mixRgb(left.rgb, right.rgb, clamp(local, 0, 1));
+          return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+        }
+      }
+      return "rgb(37, 99, 235)";
+    }
+
+    function drawHeatmap() {
+      const heatmap = state.heatmap;
+      const values = heatmap?.values || tauGridValues(state.config.heatmapStep);
+      const rows = values.length;
+      const cols = values.length;
+      const margin = { left: 70, right: 76, top: 66, bottom: 64 };
+      const plotWidth = Math.max(160, view.width - margin.left - margin.right);
+      const plotHeight = Math.max(160, view.height - margin.top - margin.bottom);
+      const cellSize = Math.max(14, Math.min(plotWidth / cols, plotHeight / rows));
+      const gridWidth = cellSize * cols;
+      const gridHeight = cellSize * rows;
+      const x0 = margin.left + (plotWidth - gridWidth) / 2;
+      const y0 = margin.top + (plotHeight - gridHeight) / 2;
+      const titleX = view.width > 720 ? 210 : margin.left;
+
+      sceneCtx.save();
+      sceneCtx.font = "700 18px Inter, system-ui, sans-serif";
+      sceneCtx.fillStyle = INK;
+      sceneCtx.fillText("Heatmap of final segregation E[S]", titleX, 32);
+      sceneCtx.font = "12px Inter, system-ui, sans-serif";
+      sceneCtx.fillStyle = "#5c6678";
+      const repsText = heatmap ? `${heatmap.reps} seeds per cell` : "choose Compute heatmap";
+      sceneCtx.fillText(`fixed n=${state.config.n}, m=${state.config.m}, lambda=${number(state.config.lambda, 2)}, p_B=${number(state.config.pBlue, 2)}; ${repsText}; ${state.config.fallbackRule}`, titleX, 52);
+
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+          const cell = heatmap?.grid[row]?.[col];
+          const x = x0 + col * cellSize;
+          const y = y0 + (rows - 1 - row) * cellSize;
+          sceneCtx.fillStyle = cell ? heatColor(cell.segregated_share_mean) : "rgba(217, 222, 232, 0.42)";
+          sceneCtx.fillRect(x, y, cellSize, cellSize);
+          sceneCtx.strokeStyle = "rgba(255, 255, 255, 0.72)";
+          sceneCtx.lineWidth = 1;
+          sceneCtx.strokeRect(x, y, cellSize, cellSize);
+          if (cell && cellSize >= 31) {
+            sceneCtx.fillStyle = cell.segregated_share_mean > 0.55 ? "white" : "#344054";
+            sceneCtx.font = "700 10px Inter, system-ui, sans-serif";
+            sceneCtx.textAlign = "center";
+            sceneCtx.fillText(String(Math.round(cell.segregated_share_mean * 100)), x + cellSize / 2, y + cellSize / 2 + 4);
+            sceneCtx.textAlign = "left";
+          }
+        }
+      }
+
+      sceneCtx.strokeStyle = "rgba(102, 112, 133, 0.45)";
+      sceneCtx.lineWidth = 1.2;
+      sceneCtx.strokeRect(x0, y0, gridWidth, gridHeight);
+      sceneCtx.fillStyle = "#344054";
+      sceneCtx.font = "700 12px Inter, system-ui, sans-serif";
+      sceneCtx.textAlign = "center";
+      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + 42);
+      sceneCtx.save();
+      sceneCtx.translate(x0 - 48, y0 + gridHeight / 2);
+      sceneCtx.rotate(-Math.PI / 2);
+      sceneCtx.fillText("tau_B", 0, 0);
+      sceneCtx.restore();
+
+      sceneCtx.font = "11px Inter, system-ui, sans-serif";
+      sceneCtx.fillStyle = "#526071";
+      sceneCtx.textAlign = "center";
+      for (let col = 0; col < cols; col += 1) {
+        if (col !== 0 && col !== cols - 1 && cols > 7 && col % 2) continue;
+        sceneCtx.fillText(number(values[col], 2), x0 + col * cellSize + cellSize / 2, y0 + gridHeight + 20);
+      }
+      sceneCtx.textAlign = "right";
+      for (let row = 0; row < rows; row += 1) {
+        if (row !== 0 && row !== rows - 1 && rows > 7 && row % 2) continue;
+        sceneCtx.fillText(number(values[row], 2), x0 - 10, y0 + (rows - 1 - row) * cellSize + cellSize / 2 + 4);
+      }
+      sceneCtx.textAlign = "left";
+
+      drawHeatmapLegend(x0 + gridWidth + 28, y0, Math.min(220, gridHeight));
+      if (!heatmap || !heatmap.cells.length) {
+        sceneCtx.fillStyle = "rgba(255, 255, 255, 0.92)";
+        sceneCtx.strokeStyle = "rgba(217, 222, 232, 0.95)";
+        const width = Math.min(420, gridWidth - 24);
+        const height = 76;
+        const x = x0 + (gridWidth - width) / 2;
+        const y = y0 + (gridHeight - height) / 2;
+        roundRect(sceneCtx, x, y, width, height, 8);
+        sceneCtx.fill();
+        sceneCtx.stroke();
+        sceneCtx.fillStyle = INK;
+        sceneCtx.font = "700 15px Inter, system-ui, sans-serif";
+        sceneCtx.textAlign = "center";
+        sceneCtx.fillText("Ready for threshold surface estimation", x + width / 2, y + 30);
+        sceneCtx.font = "12px Inter, system-ui, sans-serif";
+        sceneCtx.fillStyle = "#5c6678";
+        sceneCtx.fillText(`${rows * cols} cells; ${replicateCount(20)} seeded simulations per cell`, x + width / 2, y + 52);
+        sceneCtx.textAlign = "left";
+      }
+      sceneCtx.restore();
+    }
+
+    function drawHeatmapLegend(x, y, height) {
+      const width = 14;
+      const steps = Math.max(60, Math.floor(height));
+      for (let i = 0; i < steps; i += 1) {
+        const v = 1 - i / (steps - 1);
+        sceneCtx.fillStyle = heatColor(v);
+        sceneCtx.fillRect(x, y + i * height / steps, width, height / steps + 1);
+      }
+      sceneCtx.strokeStyle = "rgba(102, 112, 133, 0.45)";
+      sceneCtx.strokeRect(x, y, width, height);
+      sceneCtx.fillStyle = "#526071";
+      sceneCtx.font = "11px Inter, system-ui, sans-serif";
+      sceneCtx.fillText("E[S]", x - 2, y - 10);
+      sceneCtx.fillText("1", x + width + 8, y + 4);
+      sceneCtx.fillText("0.5", x + width + 8, y + height / 2 + 4);
+      sceneCtx.fillText("0", x + width + 8, y + height + 4);
     }
 
     function drawBackdrop() {
@@ -2284,6 +2718,10 @@
       chartCtx.clearRect(0, 0, width, height);
       chartCtx.fillStyle = "#fbfcfe";
       chartCtx.fillRect(0, 0, width, height);
+      if (mode === "heatmap") {
+        drawHeatmapDiagonalChart(width, height);
+        return;
+      }
       chartCtx.strokeStyle = "rgba(217, 222, 232, 0.8)";
       chartCtx.lineWidth = 1;
       chartCtx.beginPath();
@@ -2298,6 +2736,45 @@
       } else {
         drawSeries("activeShare", AMBER, width, height);
       }
+    }
+
+    function drawHeatmapDiagonalChart(width, height) {
+      chartCtx.strokeStyle = "rgba(217, 222, 232, 0.8)";
+      chartCtx.lineWidth = 1;
+      chartCtx.beginPath();
+      chartCtx.moveTo(10, height - 16);
+      chartCtx.lineTo(width - 10, height - 16);
+      chartCtx.stroke();
+
+      const heatmap = state.heatmap;
+      if (!heatmap?.cells.length) {
+        chartCtx.fillStyle = "#667085";
+        chartCtx.font = "12px Inter, system-ui, sans-serif";
+        chartCtx.fillText("Diagonal E[S] profile appears after heatmap computation.", 12, 24);
+        return;
+      }
+
+      const diagonal = heatmap.values
+        .map((tau, index) => heatmap.grid[index][index])
+        .filter(Boolean);
+      if (diagonal.length < 2) return;
+      const left = 12;
+      const right = width - 12;
+      const top = 12;
+      const bottom = height - 18;
+      chartCtx.strokeStyle = GREEN;
+      chartCtx.lineWidth = 2;
+      chartCtx.beginPath();
+      diagonal.forEach((cell, index) => {
+        const x = left + (right - left) * (index / (diagonal.length - 1));
+        const y = bottom - (bottom - top) * clamp(cell.segregated_share_mean, 0, 1);
+        if (index === 0) chartCtx.moveTo(x, y);
+        else chartCtx.lineTo(x, y);
+      });
+      chartCtx.stroke();
+      chartCtx.fillStyle = "#526071";
+      chartCtx.font = "11px Inter, system-ui, sans-serif";
+      chartCtx.fillText("diagonal tau_B=tau_R", left, 14);
     }
 
     function drawSeries(key, color, width, height) {
@@ -2322,6 +2799,10 @@
     }
 
     function renderBars() {
+      if (mode === "heatmap") {
+        els.bars.innerHTML = "";
+        return;
+      }
       const groups = state.groups
         .slice()
         .filter(group => group.members.size > 0)
@@ -2339,15 +2820,17 @@
     function animationFrame() {
       if (state.running) {
         if (mode === "threshold") stepThreshold();
-        else stepVoter();
+        else if (mode === "voter") stepVoter();
       }
-      relaxLayout();
+      if (mode !== "heatmap") relaxLayout();
       renderScene();
       if (state.tick % 4 === 0) renderBars();
       requestAnimationFrame(animationFrame);
     }
 
     function setMode(nextMode) {
+      experimentToken += 1;
+      setExperimentBusy(false);
       mode = nextMode;
       for (const tab of els.tabs) {
         tab.classList.toggle("active", tab.dataset.mode === mode);
@@ -2359,7 +2842,7 @@
       tab.addEventListener("click", () => setMode(tab.dataset.mode));
     });
 
-    [els.agents, els.cliques, els.lambda, els.tauBlue, els.tauRed, els.joinRate, els.leaveRate, els.blue, els.speed].forEach(input => {
+    [els.agents, els.cliques, els.lambda, els.tauBlue, els.tauRed, els.heatmapStep, els.fallbackRule, els.joinRate, els.leaveRate, els.blue, els.speed].forEach(input => {
       input.addEventListener("input", syncControlLabels);
       input.addEventListener("change", () => resetSimulation(false));
     });
@@ -2376,7 +2859,7 @@
     els.step.addEventListener("click", () => {
       state.running = false;
       if (mode === "threshold") stepThreshold();
-      else stepVoter();
+      else if (mode === "voter") stepVoter();
       updateReadout();
     });
     els.reset.addEventListener("click", () => resetSimulation(false));
