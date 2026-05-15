@@ -399,6 +399,7 @@
       color: #526071;
       font-size: 12px;
       line-height: 1.45;
+      overflow-x: auto;
     }
 
     .export-note {
@@ -1127,7 +1128,6 @@
       state.lastJoins = joins;
       state.lastLeaves = leaves;
       refreshGroupCounts();
-      if (joins > 0 || leaves > 0) buildGraph();
       state.metrics = computeMetrics();
       if (state.metrics.blueShare === 0 || state.metrics.blueShare === 1 || (state.config.joinRate === 0 && state.metrics.activeEdges === 0)) {
         state.settled = true;
@@ -1145,6 +1145,7 @@
         if (!node.groups.has(group.id)) {
           addNodeToGroup(node, group);
           recountGroup(group);
+          buildGraph();
           return true;
         }
       }
@@ -1153,6 +1154,7 @@
       const group = candidates[Math.floor(rng() * candidates.length)];
       addNodeToGroup(node, group);
       recountGroup(group);
+      buildGraph();
       return true;
     }
 
@@ -1163,6 +1165,7 @@
       const group = state.groups[groups[Math.floor(rng() * groups.length)]];
       removeNodeFromGroup(node, group);
       recountGroup(group);
+      buildGraph();
       return true;
     }
 
@@ -1191,14 +1194,21 @@
         let mixedGroups = 0;
         let blueOnlyGroups = 0;
         let redOnlyGroups = 0;
+        let singletonGroups = 0;
+        let nontrivialGroups = 0;
+        let nontrivialSegregatedGroups = 0;
         for (const group of state.groups) {
           if (group.members.size > 0) {
+            if (group.members.size === 1) singletonGroups += 1;
+            else nontrivialGroups += 1;
             if (group.red === 0) {
               segregated += 1;
               blueOnlyGroups += 1;
+              if (group.members.size > 1) nontrivialSegregatedGroups += 1;
             } else if (group.blue === 0) {
               segregated += 1;
               redOnlyGroups += 1;
+              if (group.members.size > 1) nontrivialSegregatedGroups += 1;
             } else {
               mixedGroups += 1;
             }
@@ -1215,6 +1225,10 @@
           segregatedGroups: segregated,
           blueOnlyGroups,
           redOnlyGroups,
+          singletonGroups,
+          nontrivialGroups,
+          nontrivialSegregatedGroups,
+          nontrivialSegregatedShare: nontrivialGroups ? nontrivialSegregatedGroups / nontrivialGroups : 0,
           mixedGroups,
           nonemptyGroups,
           unhappy: pairs.length,
@@ -1321,7 +1335,8 @@
       if (mode === "threshold") {
         renderResultItems([
           `<strong>Stopping statistic:</strong> ${stopText}; ${metrics.unhappyAgents} unhappy agents remain (${metrics.unhappyBlueAgents} blue, ${metrics.unhappyRedAgents} red) across ${metrics.unhappy} unhappy memberships.`,
-          `<strong>Segregation observable:</strong> ${metrics.segregatedGroups}/${metrics.nonemptyGroups} nonempty groups are monochromatic (${percent(metrics.segregatedShare)}): ${metrics.blueOnlyGroups} blue-only and ${metrics.redOnlyGroups} red-only; ${metrics.mixedGroups} mixed groups remain. Mixed groups can be absorbing when both colours meet their own demand.`,
+          `<strong>Segregation observable:</strong> ${metrics.segregatedGroups}/${metrics.nonemptyGroups} nonempty groups are monochromatic (${percent(metrics.segregatedShare)}), including ${metrics.singletonGroups} singleton groups. Among groups of size at least 2, ${metrics.nontrivialSegregatedGroups}/${metrics.nontrivialGroups} are monochromatic (${percent(metrics.nontrivialSegregatedShare)}).`,
+          `<strong>Colour balance:</strong> final monochromatic groups split into ${metrics.blueOnlyGroups} blue-only and ${metrics.redOnlyGroups} red-only; ${metrics.mixedGroups} mixed groups remain. Mixed groups can be absorbing when both colours meet their own demand.`,
           `<strong>Network observable:</strong> ${metrics.activeEdges} opposite-colour projected edges remain (${percent(metrics.activeShare)} of projected edges); ${metrics.isolated} isolated members.`,
           `<strong>Model use:</strong> across seeds, record final segregation share, unhappy agents, and stopping time as empirical estimates for the demand surface (&tau;<sub>B</sub>, &tau;<sub>R</sub>) at which segregation becomes sharp.`
         ]);
@@ -1523,14 +1538,21 @@
       let mixedGroups = 0;
       let blueOnlyGroups = 0;
       let redOnlyGroups = 0;
+      let singletonGroups = 0;
+      let nontrivialGroups = 0;
+      let nontrivialSegregatedGroups = 0;
       for (const group of model.groups) {
         if (group.members.size > 0) {
+          if (group.members.size === 1) singletonGroups += 1;
+          else nontrivialGroups += 1;
           if (group.red === 0) {
             segregatedGroups += 1;
             blueOnlyGroups += 1;
+            if (group.members.size > 1) nontrivialSegregatedGroups += 1;
           } else if (group.blue === 0) {
             segregatedGroups += 1;
             redOnlyGroups += 1;
+            if (group.members.size > 1) nontrivialSegregatedGroups += 1;
           } else {
             mixedGroups += 1;
           }
@@ -1551,6 +1573,10 @@
         segregatedGroups,
         blueOnlyGroups,
         redOnlyGroups,
+        singletonGroups,
+        nontrivialGroups,
+        nontrivialSegregatedGroups,
+        nontrivialSegregatedShare: nontrivialGroups ? nontrivialSegregatedGroups / nontrivialGroups : 0,
         mixedGroups,
         unhappyAgents: model.nodes.filter(node => node.unhappy).length,
         unhappyBlueAgents: model.nodes.filter(node => node.unhappy && node.color).length,
@@ -1809,6 +1835,7 @@
           ["P(happy stop)", estimateText(summarize(results, "happy"), 1, 100, "%")],
           ["P(no happy move)", estimateText(summarize(results, "blocked"), 1, 100, "%")],
           ["E[segregated share]", estimateText(summarize(results, "segregatedShare"), 1, 100, "%")],
+          ["E[segregated share | size >= 2]", estimateText(summarize(results, "nontrivialSegregatedShare"), 1, 100, "%")],
           ["E[active-edge share]", estimateText(summarize(results, "activeShare"), 1, 100, "%")],
           ["E[T_stop]", estimateText(summarize(results, "updates"), 1)],
           ["E[unhappy agents]", estimateText(summarize(results, "unhappyAgents"), 2)],
@@ -1876,17 +1903,20 @@
             ...summaryFields(results, "blocked", "p_blocked"),
             ...summaryFields(results, "maxedOut", "p_max_updates"),
             ...summaryFields(results, "segregatedShare", "segregated_share"),
+            ...summaryFields(results, "nontrivialSegregatedShare", "nontrivial_segregated_share"),
             ...summaryFields(results, "activeShare", "active_edge_share"),
             ...summaryFields(results, "updates", "updates"),
             ...summaryFields(results, "unhappyAgents", "unhappy_agents"),
             ...summaryFields(results, "blueOnlyGroups", "blue_only_groups"),
-            ...summaryFields(results, "redOnlyGroups", "red_only_groups")
+            ...summaryFields(results, "redOnlyGroups", "red_only_groups"),
+            ...summaryFields(results, "singletonGroups", "singleton_groups")
           };
           exportRows.push(aggregate);
           rows.push([
             number(tau, 2),
             estimateText(summarize(results, "happy"), 0, 100, "%"),
             estimateText(summarize(results, "segregatedShare"), 0, 100, "%"),
+            estimateText(summarize(results, "nontrivialSegregatedShare"), 0, 100, "%"),
             estimateText(summarize(results, "updates"), 0),
             estimateText(summarize(results, "blocked"), 0, 100, "%")
           ]);
@@ -1894,7 +1924,9 @@
         setExport({ filename: `rig-diagonal-sweep-seed-${baseConfig.seed}.csv`, rows: exportRows });
         const tau50 = firstCrossing(exportRows, "segregated_share_mean", 0.5);
         const tau90 = firstCrossing(exportRows, "segregated_share_mean", 0.9);
-        els.ensemble.innerHTML = `Diagonal threshold sweep with ${reps} seeds per value (&tau;<sub>B</sub>=&tau;<sub>R</sub>). First sampled E[segregated share] crossings: 50% at &tau;=${tau50}, 90% at &tau;=${tau90}. Use these as coarse numerical markers, not fitted critical values.${tableHtml(["&tau;", "P happy", "E[S]", "E[T]", "P blocked"], rows)}${exportNote()}`;
+        const tau50Nontrivial = firstCrossing(exportRows, "nontrivial_segregated_share_mean", 0.5);
+        const tau90Nontrivial = firstCrossing(exportRows, "nontrivial_segregated_share_mean", 0.9);
+        els.ensemble.innerHTML = `Diagonal threshold sweep with ${reps} seeds per value (&tau;<sub>B</sub>=&tau;<sub>R</sub>). First sampled E[segregated share] crossings: 50% at &tau;=${tau50}, 90% at &tau;=${tau90}. Excluding singleton groups: 50% at &tau;=${tau50Nontrivial}, 90% at &tau;=${tau90Nontrivial}. Use these as coarse numerical markers, not fitted critical values.${tableHtml(["&tau;", "P happy", "E[S all]", "E[S size>=2]", "E[T]", "P blocked"], rows)}${exportNote()}`;
         setExperimentBusy(false);
       }, 20);
     }
@@ -1918,7 +1950,6 @@
               const seed = config.seed + 1009 * i + offset;
               results.push({ seed, ...simulateThresholdBatch(config, seed) });
             }
-            const seg = summarize(results, "segregatedShare");
             exportRows.push({
               experiment: "two-threshold-grid",
               ...configExportFields(config),
@@ -1927,23 +1958,25 @@
               ...summaryFields(results, "blocked", "p_blocked"),
               ...summaryFields(results, "maxedOut", "p_max_updates"),
               ...summaryFields(results, "segregatedShare", "segregated_share"),
+              ...summaryFields(results, "nontrivialSegregatedShare", "nontrivial_segregated_share"),
               ...summaryFields(results, "activeShare", "active_edge_share"),
               ...summaryFields(results, "updates", "updates"),
               ...summaryFields(results, "unhappyBlueAgents", "unhappy_blue_agents"),
               ...summaryFields(results, "unhappyRedAgents", "unhappy_red_agents"),
               ...summaryFields(results, "blueOnlyGroups", "blue_only_groups"),
-              ...summaryFields(results, "redOnlyGroups", "red_only_groups")
+              ...summaryFields(results, "redOnlyGroups", "red_only_groups"),
+              ...summaryFields(results, "singletonGroups", "singleton_groups")
             });
-            row.push(estimateText(seg, 0, 100, "%"));
+            row.push(estimateText(summarize(results, "nontrivialSegregatedShare"), 0, 100, "%"));
           }
           rows.push(row);
         }
         setExport({ filename: `rig-threshold-grid-seed-${baseConfig.seed}.csv`, rows: exportRows });
-        const sorted = exportRows.slice().sort((a, b) => b.segregated_share_mean - a.segregated_share_mean);
+        const sorted = exportRows.slice().sort((a, b) => b.nontrivial_segregated_share_mean - a.nontrivial_segregated_share_mean);
         const strongest = sorted[0];
         const weakest = sorted[sorted.length - 1];
         const headers = ["&tau;<sub>B</sub> \\ &tau;<sub>R</sub>", ...taus.map(tau => number(tau, 2))];
-        els.ensemble.innerHTML = `Two-threshold grid with ${reps} seeds per cell. Entries are E[segregated clique share]. In this grid, the largest sampled value is ${percent(strongest.segregated_share_mean)} at (&tau;<sub>B</sub>, &tau;<sub>R</sub>)=(${number(strongest.tau_B, 2)}, ${number(strongest.tau_R, 2)}); the smallest is ${percent(weakest.segregated_share_mean)} at (${number(weakest.tau_B, 2)}, ${number(weakest.tau_R, 2)}).${tableHtml(headers, rows)}${exportNote()}`;
+        els.ensemble.innerHTML = `Two-threshold grid with ${reps} seeds per cell. Entries are E[segregated share among groups of size at least 2], so singleton groups do not drive the colour pattern. In this grid, the largest sampled value is ${percent(strongest.nontrivial_segregated_share_mean)} at (&tau;<sub>B</sub>, &tau;<sub>R</sub>)=(${number(strongest.tau_B, 2)}, ${number(strongest.tau_R, 2)}); the smallest is ${percent(weakest.nontrivial_segregated_share_mean)} at (${number(weakest.tau_B, 2)}, ${number(weakest.tau_R, 2)}).${tableHtml(headers, rows)}${exportNote()}`;
         setExperimentBusy(false);
       }, 20);
     }
