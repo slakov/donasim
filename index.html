@@ -528,14 +528,14 @@
 
         <label class="control">
           <span class="control-row"><span><strong>n</strong> members</span><output id="agentsOut"></output></span>
-          <input id="agents" type="range" min="50" max="180" step="10" value="110">
-          <small>Individuals in the vertex set V_n.</small>
+          <input id="agents" type="range" min="50" max="1000" step="10" value="110">
+          <small>Individuals in the vertex set V_n. Larger n is useful for heatmaps because it reduces small-sample group artifacts.</small>
         </label>
 
         <label class="control">
           <span class="control-row"><span><strong>m</strong> groups</span><output id="cliquesOut"></output></span>
-          <input id="cliques" type="range" min="10" max="36" step="1" value="24">
-          <small>Auxiliary groups that induce cliques in the projected RIG.</small>
+          <input id="cliques" type="range" min="10" max="240" step="2" value="24">
+          <small>Auxiliary groups that induce cliques in the projected RIG; with large n, raise m to control n&lambda;/m.</small>
         </label>
 
         <label class="control">
@@ -560,6 +560,15 @@
           <span class="control-row"><span><strong>&Delta;&tau;</strong> heatmap step</span><output id="heatmapStepOut"></output></span>
           <input id="heatmapStep" type="range" min="0.05" max="0.25" step="0.05" value="0.10">
           <small>Resolution for the (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Default 0.10 gives 121 cells; 0.05 gives 441 cells.</small>
+        </label>
+
+        <label class="control hidden" id="heatmapLabelsControl">
+          <span class="control-row"><span>Heatmap labels</span></span>
+          <select id="heatmapLabels">
+            <option value="hide" selected>Colour only</option>
+            <option value="show">Show percentages</option>
+          </select>
+          <small>Use colour-only for clean figures; show percentages for checking exact cell values.</small>
         </label>
 
         <label class="control" id="fallbackControl">
@@ -644,7 +653,7 @@
           <h3>Numerical experiment</h3>
           <div class="experiment-controls">
             <label id="replicatesLabel" for="replicates">Seeds</label>
-            <input id="replicates" type="number" min="5" max="200" step="5" value="40">
+            <input id="replicates" type="number" min="5" max="1000" step="5" value="40">
           </div>
           <small id="replicatesHint" class="experiment-hint">Independent seeds for the selected experiment.</small>
           <div class="experiment-actions">
@@ -676,6 +685,7 @@
       tauBlue: document.getElementById("tauBlue"),
       tauRed: document.getElementById("tauRed"),
       heatmapStep: document.getElementById("heatmapStep"),
+      heatmapLabels: document.getElementById("heatmapLabels"),
       fallbackRule: document.getElementById("fallbackRule"),
       joinRate: document.getElementById("joinRate"),
       leaveRate: document.getElementById("leaveRate"),
@@ -685,6 +695,7 @@
       tauBlueControl: document.getElementById("tauBlueControl"),
       tauRedControl: document.getElementById("tauRedControl"),
       heatmapStepControl: document.getElementById("heatmapStepControl"),
+      heatmapLabelsControl: document.getElementById("heatmapLabelsControl"),
       fallbackControl: document.getElementById("fallbackControl"),
       joinControl: document.getElementById("joinControl"),
       leaveControl: document.getElementById("leaveControl"),
@@ -769,6 +780,7 @@
         tauBlue: Number(els.tauBlue.value),
         tauRed: Number(els.tauRed.value),
         heatmapStep: Number(els.heatmapStep.value),
+        heatmapLabels: els.heatmapLabels.value,
         fallbackRule: els.fallbackRule.value,
         joinRate: Number(els.joinRate.value),
         leaveRate: Number(els.leaveRate.value),
@@ -853,6 +865,7 @@
       els.tauBlueControl.classList.toggle("hidden", mode !== "threshold");
       els.tauRedControl.classList.toggle("hidden", mode !== "threshold");
       els.heatmapStepControl.classList.toggle("hidden", mode !== "heatmap");
+      els.heatmapLabelsControl.classList.toggle("hidden", mode !== "heatmap");
       els.fallbackControl.classList.toggle("hidden", mode === "voter");
       els.joinControl.classList.toggle("hidden", mode !== "voter");
       els.leaveControl.classList.toggle("hidden", mode !== "voter");
@@ -861,11 +874,11 @@
       els.sweepTau.classList.toggle("hidden", mode !== "threshold");
       els.sweepTauGrid.classList.toggle("hidden", mode !== "threshold");
       els.estimate.textContent = mode === "heatmap" ? "Compute heatmap" : "Estimate";
-      els.replicates.max = "200";
+      els.replicates.max = mode === "heatmap" ? "1000" : "200";
       els.replicates.step = mode === "heatmap" ? "10" : "5";
       els.replicatesLabel.textContent = mode === "heatmap" ? "Sim/cell" : "Seeds";
       els.replicatesHint.textContent = mode === "heatmap"
-        ? "Independent simulations per heatmap cell; 100 is the default for stable colour estimates."
+        ? "Independent simulations per heatmap cell; 100 is the default, 1000 is available for final figures."
         : "Independent seeds for the selected experiment.";
       els.metricFirstLabel.textContent = mode === "heatmap" ? "Cells" : "Blue share";
       els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : mode === "heatmap" ? "Max E[S]" : "Active edges";
@@ -1400,7 +1413,7 @@
       const cfg = state.config;
       const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
       const values = heatmap?.values || tauGridValues(cfg.heatmapStep);
-      const reps = heatmap?.reps || replicateCount(200);
+      const reps = heatmap?.reps || replicateCount(1000);
       const noTargetText = cfg.fallbackRule === "leave" ? "no-target memberships leave the group" : "no-target memberships are restored";
       els.formula.innerHTML = `Fixed parameters for the heatmap: n=${cfg.n}, m=${cfg.m}, p=&lambda;/m=${number(groupProbability, 3)}, p<sub>B</sub>=${number(cfg.pBlue, 2)}. For each cell (&tau;<sub>B</sub>,&tau;<sub>R</sub>), the dashboard estimates E[S], where S is the final fraction of nonempty groups with only blue or only red members; ${noTargetText}.`;
 
@@ -2097,7 +2110,7 @@
       const baseConfig = configFromControls();
       const step = baseConfig.heatmapStep;
       const values = tauGridValues(step);
-      const reps = replicateCount(200);
+      const reps = replicateCount(1000);
       const totalCells = values.length * values.length;
       const heatmap = {
         running: true,
@@ -2123,6 +2136,8 @@
 
       let row = 0;
       let col = 0;
+      let repIndex = 0;
+      let currentResults = [];
       const computeChunk = () => {
         if (token !== experimentToken || mode !== "heatmap") {
           heatmap.running = false;
@@ -2134,19 +2149,20 @@
           const tauBlue = values[row];
           const tauRed = values[col];
           const config = { ...baseConfig, tauBlue, tauRed };
-          const results = [];
           const offset = Math.round(tauBlue * 10000) + Math.round(tauRed * 100000);
-          for (let i = 0; i < reps; i += 1) {
-            const seed = config.seed + 1009 * i + offset;
-            results.push({ seed, ...simulateThresholdBatch(config, seed) });
-          }
+          const seed = config.seed + 1009 * repIndex + offset;
+          currentResults.push({ seed, ...simulateThresholdBatch(config, seed) });
+          repIndex += 1;
+          heatmap.simulationsDone += 1;
+          if (repIndex < reps) continue;
 
-          const cell = heatmapCellSummary(results, config, reps, step);
+          const cell = heatmapCellSummary(currentResults, config, reps, step);
           heatmap.grid[row][col] = cell;
           heatmap.cells.push(cell);
           heatmap.cellsDone += 1;
-          heatmap.simulationsDone += reps;
 
+          currentResults = [];
+          repIndex = 0;
           col += 1;
           if (col >= values.length) {
             col = 0;
@@ -2403,6 +2419,7 @@
       const values = heatmap?.values || tauGridValues(state.config.heatmapStep);
       const rows = values.length;
       const cols = values.length;
+      const showCellLabels = state.config.heatmapLabels === "show";
       const margin = { left: 70, right: 76, top: 66, bottom: 64 };
       const plotWidth = Math.max(160, view.width - margin.left - margin.right);
       const plotHeight = Math.max(160, view.height - margin.top - margin.bottom);
@@ -2432,7 +2449,7 @@
           sceneCtx.strokeStyle = "rgba(255, 255, 255, 0.72)";
           sceneCtx.lineWidth = 1;
           sceneCtx.strokeRect(x, y, cellSize, cellSize);
-          if (cell && cellSize >= 31) {
+          if (showCellLabels && cell && cellSize >= 31) {
             sceneCtx.fillStyle = cell.segregated_share_mean > 0.55 ? "white" : "#344054";
             sceneCtx.font = "700 10px Inter, system-ui, sans-serif";
             sceneCtx.textAlign = "center";
@@ -2486,7 +2503,7 @@
         sceneCtx.fillText("Ready for threshold surface estimation", x + width / 2, y + 30);
         sceneCtx.font = "12px Inter, system-ui, sans-serif";
         sceneCtx.fillStyle = "#5c6678";
-        sceneCtx.fillText(`${rows * cols} cells; ${replicateCount(200)} simulations per cell`, x + width / 2, y + 52);
+        sceneCtx.fillText(`${rows * cols} cells; ${replicateCount(1000)} simulations per cell`, x + width / 2, y + 52);
         sceneCtx.textAlign = "left";
       }
       sceneCtx.restore();
@@ -2869,6 +2886,13 @@
     [els.agents, els.cliques, els.lambda, els.tauBlue, els.tauRed, els.heatmapStep, els.fallbackRule, els.joinRate, els.leaveRate, els.blue, els.speed].forEach(input => {
       input.addEventListener("input", syncControlLabels);
       input.addEventListener("change", () => resetSimulation(false));
+    });
+
+    els.heatmapLabels.addEventListener("change", () => {
+      if (state) {
+        state.config.heatmapLabels = els.heatmapLabels.value;
+        renderScene();
+      }
     });
 
     els.seed.addEventListener("change", () => resetSimulation(false));
