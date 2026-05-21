@@ -886,7 +886,7 @@
       if (mode === "threshold") {
         els.ensemble.textContent = "Run an estimate, a diagonal sweep, or a two-threshold grid to aggregate this parameter point over many seeds.";
       } else if (mode === "heatmap") {
-        els.ensemble.innerHTML = "Compute the heatmap to estimate E[S] on a (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Red, amber, and green encode low, transition, and high final segregation; contour lines mark E[S]=0.5 and E[S]=0.9 when available. The CSV also records the size-at-least-two diagnostic.";
+        els.ensemble.innerHTML = "Compute the heatmap to estimate E[S] on a (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Red, amber, and green encode low, transition, and high final segregation; smoothed level curves mark E[S]=0.5 and E[S]=0.9 when available. The CSV also records the size-at-least-two diagnostic.";
       } else {
         els.ensemble.textContent = "Run an estimate to aggregate voter absorption over many seeds.";
       }
@@ -2514,8 +2514,7 @@
       const rows = values.length;
       const cols = values.length;
       const showCellLabels = state.config.heatmapLabels === "show";
-      const denseTicks = cols > 31;
-      const margin = { left: 70, right: 150, top: 66, bottom: denseTicks ? 82 : 64 };
+      const margin = { left: 70, right: 150, top: 66, bottom: 66 };
       const plotWidth = Math.max(160, view.width - margin.left - margin.right);
       const plotHeight = Math.max(160, view.height - margin.top - margin.bottom);
       const cellSize = Math.max(1.5, Math.min(plotWidth / cols, plotHeight / rows));
@@ -2566,7 +2565,7 @@
       sceneCtx.fillStyle = "#344054";
       sceneCtx.font = "700 12px Inter, system-ui, sans-serif";
       sceneCtx.textAlign = "center";
-      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + (denseTicks ? 60 : 42));
+      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + 44);
       sceneCtx.save();
       sceneCtx.translate(x0 - 48, y0 + gridHeight / 2);
       sceneCtx.rotate(-Math.PI / 2);
@@ -2577,20 +2576,12 @@
       sceneCtx.fillStyle = "#526071";
       sceneCtx.textAlign = "center";
       const tauStep = values.length > 1 ? Math.max(0.01, values[1] - values[0]) : 1;
-      const tickStride = Math.max(1, Math.round((cols > 13 ? 0.10 : tauStep) / tauStep));
+      const tickStride = Math.max(1, Math.ceil(52 / cellSize), Math.round((cols > 13 ? 0.10 : tauStep) / tauStep));
       for (let col = 0; col < cols; col += 1) {
-        if (col !== 0 && col !== cols - 1 && col % tickStride) continue;
+        const nearLastTick = cols - 1 - col < Math.max(2, Math.floor(tickStride * 0.65));
+        if (col !== 0 && col !== cols - 1 && (col % tickStride || nearLastTick)) continue;
         const tickX = x0 + col * cellSize + cellSize / 2;
-        if (denseTicks) {
-          sceneCtx.save();
-          sceneCtx.translate(tickX, y0 + gridHeight + 30);
-          sceneCtx.rotate(-Math.PI / 2);
-          sceneCtx.textAlign = "right";
-          sceneCtx.fillText(number(values[col], 2), 0, 4);
-          sceneCtx.restore();
-        } else {
-          sceneCtx.fillText(number(values[col], 2), tickX, y0 + gridHeight + 20);
-        }
+        sceneCtx.fillText(number(values[col], 2), tickX, y0 + gridHeight + 20);
       }
       sceneCtx.textAlign = "right";
       for (let row = 0; row < rows; row += 1) {
@@ -2627,57 +2618,83 @@
         { value: 0.5, color: "rgba(17, 24, 39, 0.9)", dash: [] },
         { value: 0.9, color: "rgba(255, 255, 255, 0.95)", dash: [6, 4] }
       ];
-      const pointFor = (col, row) => ({
-        x: x0 + col * cellSize + cellSize / 2,
-        y: y0 + (rows - 1 - row) * cellSize + cellSize / 2
-      });
-      const interpolate = (a, b, level) => {
-        const pa = pointFor(a.col, a.row);
-        const pb = pointFor(b.col, b.row);
-        const t = (level - a.value) / (b.value - a.value);
-        return {
-          x: pa.x + (pb.x - pa.x) * clamp(t, 0, 1),
-          y: pa.y + (pb.y - pa.y) * clamp(t, 0, 1)
-        };
-      };
-      const crosses = (a, b, level) => (a.value < level && b.value >= level) || (b.value < level && a.value >= level);
       for (const level of levels) {
+        let points = contourThresholdPoints(heatmap, level.value, x0, y0, cellSize, rows);
+        if (points.length < 3) continue;
+        points = smoothContourPoints(points, 2);
         sceneCtx.save();
         sceneCtx.strokeStyle = level.color;
-        sceneCtx.lineWidth = level.value === 0.5 ? 2.1 : 1.9;
+        sceneCtx.lineWidth = level.value === 0.5 ? 2.4 : 2;
+        sceneCtx.lineCap = "round";
+        sceneCtx.lineJoin = "round";
+        if (level.value === 0.9) {
+          sceneCtx.shadowColor = "rgba(17, 24, 39, 0.38)";
+          sceneCtx.shadowBlur = 3;
+        }
         sceneCtx.setLineDash(level.dash);
         sceneCtx.beginPath();
-        for (let row = 0; row < heatmap.values.length - 1; row += 1) {
-          for (let col = 0; col < heatmap.values.length - 1; col += 1) {
-            const corners = [
-              { col, row, value: heatmap.grid[row]?.[col]?.segregated_share_mean },
-              { col: col + 1, row, value: heatmap.grid[row]?.[col + 1]?.segregated_share_mean },
-              { col: col + 1, row: row + 1, value: heatmap.grid[row + 1]?.[col + 1]?.segregated_share_mean },
-              { col, row: row + 1, value: heatmap.grid[row + 1]?.[col]?.segregated_share_mean }
-            ];
-            if (corners.some(corner => !Number.isFinite(corner.value))) continue;
-            const intersections = [];
-            for (let i = 0; i < 4; i += 1) {
-              const a = corners[i];
-              const b = corners[(i + 1) % 4];
-              if (crosses(a, b, level.value) && Math.abs(a.value - b.value) > 1e-9) {
-                intersections.push(interpolate(a, b, level.value));
-              }
-            }
-            if (intersections.length === 2) {
-              sceneCtx.moveTo(intersections[0].x, intersections[0].y);
-              sceneCtx.lineTo(intersections[1].x, intersections[1].y);
-            } else if (intersections.length === 4) {
-              sceneCtx.moveTo(intersections[0].x, intersections[0].y);
-              sceneCtx.lineTo(intersections[1].x, intersections[1].y);
-              sceneCtx.moveTo(intersections[2].x, intersections[2].y);
-              sceneCtx.lineTo(intersections[3].x, intersections[3].y);
-            }
-          }
+        sceneCtx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length - 1; i += 1) {
+          const mid = {
+            x: (points[i].x + points[i + 1].x) / 2,
+            y: (points[i].y + points[i + 1].y) / 2
+          };
+          sceneCtx.quadraticCurveTo(points[i].x, points[i].y, mid.x, mid.y);
         }
+        sceneCtx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
         sceneCtx.stroke();
         sceneCtx.restore();
       }
+    }
+
+    function contourThresholdPoints(heatmap, level, x0, y0, cellSize, rows) {
+      const points = [];
+      for (let row = 0; row < heatmap.values.length; row += 1) {
+        const series = heatmap.grid[row] || [];
+        if (!series.length || !series.every(cell => Number.isFinite(cell?.segregated_share_mean))) continue;
+        let x = null;
+        if (series[0].segregated_share_mean >= level) {
+          x = x0 + cellSize / 2;
+        } else {
+          for (let col = 1; col < series.length; col += 1) {
+            const previous = series[col - 1].segregated_share_mean;
+            const current = series[col].segregated_share_mean;
+            if (previous < level && current >= level) {
+              const t = Math.abs(current - previous) < 1e-9 ? 0.5 : (level - previous) / (current - previous);
+              x = x0 + (col - 1 + clamp(t, 0, 1)) * cellSize + cellSize / 2;
+              break;
+            }
+          }
+        }
+        if (x === null) continue;
+        const y = y0 + (rows - 1 - row) * cellSize + cellSize / 2;
+        points.push({ x, y });
+      }
+      return enforceMonotoneContour(points);
+    }
+
+    function enforceMonotoneContour(points) {
+      if (points.length < 2) return points;
+      let rightmost = Infinity;
+      return points.map(point => {
+        rightmost = Math.min(rightmost, point.x);
+        return { x: rightmost, y: point.y };
+      });
+    }
+
+    function smoothContourPoints(points, passes) {
+      let smoothed = points.slice();
+      for (let pass = 0; pass < passes; pass += 1) {
+        smoothed = smoothed.map((point, index) => {
+          if (index === 0 || index === smoothed.length - 1) return point;
+          return {
+            x: (smoothed[index - 1].x + 2 * point.x + smoothed[index + 1].x) / 4,
+            y: point.y
+          };
+        });
+        smoothed = enforceMonotoneContour(smoothed);
+      }
+      return smoothed;
     }
 
     function drawHeatmapLegend(x, y, height) {
@@ -2702,7 +2719,7 @@
       sceneCtx.moveTo(x, y + height + 22);
       sceneCtx.lineTo(x + width, y + height + 22);
       sceneCtx.stroke();
-      sceneCtx.fillText("0.5 contour", x + width + 8, y + height + 26);
+      sceneCtx.fillText("0.5 curve", x + width + 8, y + height + 26);
       sceneCtx.strokeStyle = "rgba(17, 24, 39, 0.55)";
       sceneCtx.setLineDash([5, 4]);
       sceneCtx.beginPath();
@@ -2710,7 +2727,7 @@
       sceneCtx.lineTo(x + width, y + height + 42);
       sceneCtx.stroke();
       sceneCtx.setLineDash([]);
-      sceneCtx.fillText("0.9 contour", x + width + 8, y + height + 46);
+      sceneCtx.fillText("0.9 curve", x + width + 8, y + height + 46);
     }
 
     function drawBackdrop() {
