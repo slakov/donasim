@@ -1423,8 +1423,12 @@
       if (!heatmap?.startedAt || heatmap.simulationsDone < 10) return "";
       const elapsedSeconds = Math.max(0.1, (performance.now() - heatmap.startedAt) / 1000);
       const rate = heatmap.simulationsDone / elapsedSeconds;
-      const remaining = Math.max(0, heatmap.totalSimulations - heatmap.simulationsDone);
-      return `, ETA ${formatDuration((remaining / rate) * 1000)} at ${number(rate, 1)}/s`;
+      const averageReps = heatmap.meanRepsPerCell || heatmap.reps;
+      const estimatedTotal = heatmap.cellsDone
+        ? Math.max(heatmap.simulationsDone, heatmap.totalCells * averageReps)
+        : heatmap.maxSimulations;
+      const remaining = Math.max(0, estimatedTotal - heatmap.simulationsDone);
+      return `, adaptive ETA ${formatDuration((remaining / rate) * 1000)} at ${number(rate, 1)}/s`;
     }
 
     function renderResultItems(items) {
@@ -1441,8 +1445,8 @@
 
       if (!heatmap || !heatmap.done) {
         renderResultItems([
-          `<strong>Heatmap design:</strong> grid step &Delta;&tau;=${number(cfg.heatmapStep, 2)} gives ${values.length} x ${values.length}=${values.length * values.length} cells; the run uses ${reps} independent simulations per cell.`,
-          `<strong>Runtime reality:</strong> total work is ${formatInteger(values.length * values.length * reps)} absorbing simulations. For an interactive run, prefer &Delta;&tau;=0.05 with 30-50 simulations per cell; use &Delta;&tau;=0.02 or 0.01 only after narrowing the parameter regime.`,
+          `<strong>Heatmap design:</strong> grid step &Delta;&tau;=${number(cfg.heatmapStep, 2)} gives ${values.length} x ${values.length}=${values.length * values.length} cells; the run uses adaptive Monte Carlo with at most ${reps} simulations per cell.`,
+          `<strong>Runtime reality:</strong> worst-case work is ${formatInteger(values.length * values.length * reps)} absorbing simulations, but clear red/green cells stop early. For an interactive run, prefer &Delta;&tau;=0.05 with max 30-50 simulations per cell; use &Delta;&tau;=0.02 or 0.01 only after narrowing the parameter regime.`,
           `<strong>Colour scale:</strong> red marks a mixed or low-segregation absorbing phase, amber marks the transition band, and green marks a highly segregated absorbing phase. These are outcome colours, separate from blue/red agent opinions.`,
           `<strong>Update rule:</strong> when a member is unhappy in a group, it moves only if at least one group it does not currently belong to would satisfy its own colour demand after joining; the target is chosen uniformly among those satisfying groups.`,
           `<strong>No-target case:</strong> if there is no satisfying target, including the case where the member already belongs to all m groups, the selected rule is ${cfg.fallbackRule === "leave" ? "to drop that membership" : "to restore that membership and allow blocked stops"}.`,
@@ -2005,11 +2009,30 @@
       return values;
     }
 
-    function heatmapCellSummary(results, config, reps, step) {
+    function heatmapMinimumReps(targetReps) {
+      if (targetReps <= 20) return targetReps;
+      return clamp(Math.round(targetReps * 0.3), 12, 30);
+    }
+
+    function shouldFinishHeatmapCell(results, targetReps) {
+      if (results.length >= targetReps) return true;
+      if (results.length < heatmapMinimumReps(targetReps)) return false;
+      const summary = summarize(results, "segregatedShare");
+      const ci95 = 1.96 * summary.se;
+      if (ci95 <= 0.035) return true;
+      const farFromContours = Math.min(Math.abs(summary.avg - 0.5), Math.abs(summary.avg - 0.9));
+      if (farFromContours > ci95 + 0.08 && results.length >= Math.max(18, heatmapMinimumReps(targetReps))) return true;
+      if ((summary.avg <= 0.08 || summary.avg >= 0.97) && ci95 <= 0.06) return true;
+      return false;
+    }
+
+    function heatmapCellSummary(results, config, targetReps, step) {
+      const reps = results.length;
       return {
         experiment: "threshold-heatmap",
         ...configExportFields(config),
         heatmap_step: step,
+        target_reps: targetReps,
         reps,
         simulations_per_cell: reps,
         ...summaryFields(results, "happy", "p_happy"),
@@ -2050,12 +2073,14 @@
         heatmap.minHighDemand = null;
         heatmap.meanBlocked = 0;
         heatmap.meanHighDemandBlocked = null;
+        heatmap.meanRepsPerCell = heatmap.reps || 0;
         heatmap.monotoneViolations = 0;
         return;
       }
       heatmap.maxSegregatedShare = Math.max(...cells.map(cell => cell.segregated_share_mean));
       heatmap.minSegregatedShare = Math.min(...cells.map(cell => cell.segregated_share_mean));
       heatmap.meanBlocked = cells.reduce((sum, cell) => sum + cell.p_blocked_mean, 0) / cells.length;
+      heatmap.meanRepsPerCell = cells.reduce((sum, cell) => sum + cell.reps, 0) / cells.length;
       const highDemand = cells.filter(cell => cell.tau_B > 0.5 && cell.tau_R > 0.5);
       heatmap.minHighDemand = highDemand.length ? Math.min(...highDemand.map(cell => cell.segregated_share_mean)) : null;
       heatmap.meanHighDemandBlocked = highDemand.length
@@ -2069,14 +2094,15 @@
         ? "not sampled"
         : `${percent(heatmap.minHighDemand)} minimum; mean blocked ${percent(heatmap.meanHighDemandBlocked)}`;
       const rows = [
-        ["Grid", `${heatmap.values.length} x ${heatmap.values.length} cells, ${heatmap.reps} simulations per cell`],
+        ["Grid", `${heatmap.values.length} x ${heatmap.values.length} cells, max ${heatmap.reps} simulations per cell`],
+        ["Actual reps/cell", `mean ${number(heatmap.meanRepsPerCell, 1)}`],
         ["No-target rule", heatmap.baseConfig.fallbackRule === "leave" ? "leave group" : "block move"],
         ["E[S] range", `${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}`],
         ["High-demand min", highDemandText],
         ["Monotone dips", heatmap.monotoneViolations ? `${heatmap.monotoneViolations} over 4 pp` : "none over 4 pp"],
         ["Mean P(blocked)", percent(heatmap.meanBlocked)]
       ];
-      els.ensemble.innerHTML = `Heatmap completed for fixed n=${heatmap.baseConfig.n}, m=${heatmap.baseConfig.m}, &lambda;=${number(heatmap.baseConfig.lambda, 2)}, and p<sub>B</sub>=${number(heatmap.baseConfig.pBlue, 2)}. Cell colour is E[S], where S is the final fraction of nonempty monochromatic groups: red is low segregation, amber is transition, green is high segregation. CSV export also includes the size-at-least-two segregation share and blocked-run probability.${tableHtml(["Diagnostic", "Value"], rows)}${exportNote()}`;
+      els.ensemble.innerHTML = `Heatmap completed for fixed n=${heatmap.baseConfig.n}, m=${heatmap.baseConfig.m}, &lambda;=${number(heatmap.baseConfig.lambda, 2)}, and p<sub>B</sub>=${number(heatmap.baseConfig.pBlue, 2)}. Cell colour is E[S], where S is the final fraction of nonempty monochromatic groups: red is low segregation, amber is transition, green is high segregation. Clear cells stop early by adaptive Monte Carlo; CSV records the actual reps used per cell.${tableHtml(["Diagnostic", "Value"], rows)}${exportNote()}`;
     }
 
     function renderCurrentEstimate(results, config, estimateMode) {
@@ -2162,6 +2188,7 @@
         cells: [],
         cellsDone: 0,
         totalCells,
+        maxSimulations: totalCells * reps,
         totalSimulations: totalCells * reps,
         simulationsDone: 0,
         reps,
@@ -2174,7 +2201,7 @@
       state.running = false;
       setExport(null);
       setExperimentBusy(true);
-      els.ensemble.textContent = `Computing heatmap: ${formatInteger(totalCells)} cells x ${reps} simulations per cell = ${formatInteger(totalCells * reps)} simulations. Use Stop to keep the completed cells as a partial CSV.`;
+      els.ensemble.textContent = `Computing heatmap: ${formatInteger(totalCells)} cells x up to ${reps} simulations per cell = at most ${formatInteger(totalCells * reps)} simulations. Clear cells stop early; use Stop to keep a partial CSV.`;
       updateReadout();
       renderScene();
 
@@ -2198,7 +2225,7 @@
           currentResults.push({ seed, ...simulateThresholdBatch(config, seed, { lightweight: true }) });
           repIndex += 1;
           heatmap.simulationsDone += 1;
-          if (repIndex < reps) continue;
+          if (!shouldFinishHeatmapCell(currentResults, reps)) continue;
 
           const cell = heatmapCellSummary(currentResults, config, reps, step);
           heatmap.grid[row][col] = cell;
@@ -2359,7 +2386,7 @@
         updateHeatmapDerived(heatmap);
         if (heatmap.cells.length) {
           setExport({ filename: `rig-threshold-heatmap-partial-seed-${heatmap.baseConfig.seed}.csv`, rows: heatmap.cells });
-          els.ensemble.innerHTML = `Stopped after ${heatmap.cellsDone}/${heatmap.totalCells} cells and ${formatInteger(heatmap.simulationsDone)}/${formatInteger(heatmap.totalSimulations)} simulations. Partial CSV export is ready; for a complete fine figure, restart with fewer simulations per cell or a coarser &Delta;&tau;.${exportNote()}`;
+          els.ensemble.innerHTML = `Stopped after ${heatmap.cellsDone}/${heatmap.totalCells} cells and ${formatInteger(heatmap.simulationsDone)}/${formatInteger(heatmap.maxSimulations)} maximum simulations. Partial CSV export is ready; for a complete fine figure, restart with fewer simulations per cell or a coarser &Delta;&tau;.${exportNote()}`;
         } else {
           setExport(null);
           els.ensemble.textContent = "Heatmap stopped before completing a cell.";
