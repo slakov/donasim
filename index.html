@@ -878,7 +878,7 @@
       els.replicates.step = mode === "heatmap" ? "10" : "5";
       els.replicatesLabel.textContent = mode === "heatmap" ? "Sim/cell" : "Seeds";
       els.replicatesHint.textContent = mode === "heatmap"
-        ? "Independent simulations per heatmap cell; 100 is the default, 1000 is available for final figures."
+        ? "Independent simulations per heatmap cell. For fine grids use 20-50; use 100+ only for coarse or final overnight runs."
         : "Independent seeds for the selected experiment.";
       els.metricFirstLabel.textContent = mode === "heatmap" ? "Cells" : "Blue share";
       els.metricSecondLabel.textContent = mode === "threshold" ? "Segregated cliques" : mode === "heatmap" ? "Max E[S]" : "Active edges";
@@ -1367,11 +1367,11 @@
         els.metricSecond.textContent = heatmap?.cells.length ? percent(heatmap.maxSegregatedShare) : "--";
         els.metricThird.textContent = heatmap?.done
           ? heatmap.monotoneViolations ? `${heatmap.monotoneViolations} dips` : "OK"
-          : "pending";
+          : heatmap?.stopped ? "stopped" : "pending";
         els.metricUpdates.textContent = String(heatmap?.simulationsDone || 0);
         setStatus(
-          heatmap?.running ? `Computing heatmap ${cellsDone}/${totalCells}` : heatmap?.done ? "Heatmap ready" : "Heatmap setup",
-          heatmap?.running ? "running" : heatmap?.done ? "done" : ""
+          heatmap?.running ? `Computing heatmap ${cellsDone}/${totalCells}${heatmapProgressText(heatmap)}` : heatmap?.done ? "Heatmap ready" : heatmap?.stopped ? "Heatmap stopped" : "Heatmap setup",
+          heatmap?.running ? "running" : heatmap?.done || heatmap?.stopped ? "done" : ""
         );
         updateHeatmapInterpretation(heatmap);
         updateRunButton();
@@ -1405,6 +1405,28 @@
       return Number.isFinite(value) ? value.toFixed(digits) : "0.00";
     }
 
+    function formatInteger(value) {
+      return Math.round(Number(value) || 0).toLocaleString("en-US");
+    }
+
+    function formatDuration(milliseconds) {
+      const seconds = Math.max(0, Math.round(milliseconds / 1000));
+      if (seconds < 60) return `${seconds}s`;
+      const minutes = Math.floor(seconds / 60);
+      const restSeconds = seconds % 60;
+      if (minutes < 60) return `${minutes}m ${restSeconds}s`;
+      const hours = Math.floor(minutes / 60);
+      return `${hours}h ${minutes % 60}m`;
+    }
+
+    function heatmapProgressText(heatmap) {
+      if (!heatmap?.startedAt || heatmap.simulationsDone < 10) return "";
+      const elapsedSeconds = Math.max(0.1, (performance.now() - heatmap.startedAt) / 1000);
+      const rate = heatmap.simulationsDone / elapsedSeconds;
+      const remaining = Math.max(0, heatmap.totalSimulations - heatmap.simulationsDone);
+      return `, ETA ${formatDuration((remaining / rate) * 1000)} at ${number(rate, 1)}/s`;
+    }
+
     function renderResultItems(items) {
       els.interpretation.innerHTML = items.map(item => `<li>${item}</li>`).join("");
     }
@@ -1420,6 +1442,7 @@
       if (!heatmap || !heatmap.done) {
         renderResultItems([
           `<strong>Heatmap design:</strong> grid step &Delta;&tau;=${number(cfg.heatmapStep, 2)} gives ${values.length} x ${values.length}=${values.length * values.length} cells; the run uses ${reps} independent simulations per cell.`,
+          `<strong>Runtime reality:</strong> total work is ${formatInteger(values.length * values.length * reps)} absorbing simulations. For an interactive run, prefer &Delta;&tau;=0.05 with 30-50 simulations per cell; use &Delta;&tau;=0.02 or 0.01 only after narrowing the parameter regime.`,
           `<strong>Colour scale:</strong> red marks a mixed or low-segregation absorbing phase, amber marks the transition band, and green marks a highly segregated absorbing phase. These are outcome colours, separate from blue/red agent opinions.`,
           `<strong>Update rule:</strong> when a member is unhappy in a group, it moves only if at least one group it does not currently belong to would satisfy its own colour demand after joining; the target is chosen uniformly among those satisfying groups.`,
           `<strong>No-target case:</strong> if there is no satisfying target, including the case where the member already belongs to all m groups, the selected rule is ${cfg.fallbackRule === "leave" ? "to drop that membership" : "to restore that membership and allow blocked stops"}.`,
@@ -1487,7 +1510,7 @@
       return items;
     }
 
-    function createBatchModel(config, seed) {
+    function createBatchModel(config, seed, options = {}) {
       const random = mulberry32(seed);
       const nodes = [];
       const groups = [];
@@ -1497,17 +1520,30 @@
       for (let j = 0; j < config.m; j += 1) {
         groups.push({ id: j, members: new Set(), blue: 0, red: 0 });
       }
-      for (const node of nodes) {
-        for (const group of groups) {
-          if (random() < config.lambda / config.m) {
+      const membershipProbability = clamp(config.lambda / config.m, 0, 1);
+      if (membershipProbability >= 1) {
+        for (const node of nodes) {
+          for (const group of groups) {
             node.groups.add(group.id);
             group.members.add(node.id);
+          }
+        }
+      } else if (membershipProbability > 0) {
+        const logMiss = Math.log1p(-membershipProbability);
+        for (const node of nodes) {
+          let groupId = -1;
+          while (groupId < groups.length) {
+            const failures = Math.floor(Math.log(Math.max(random(), Number.EPSILON)) / logMiss);
+            groupId += failures + 1;
+            if (groupId >= groups.length) break;
+            node.groups.add(groupId);
+            groups[groupId].members.add(node.id);
           }
         }
       }
       const model = { config, nodes, groups, edges: [], adjacency: [], random };
       recountBatchGroups(model);
-      buildBatchGraph(model);
+      if (options.buildGraph !== false) buildBatchGraph(model);
       return model;
     }
 
@@ -1652,8 +1688,9 @@
       return candidates.length ? candidates[Math.floor(model.random() * candidates.length)] : null;
     }
 
-    function batchThresholdMetrics(model, config, updates, blocked, maxedOut) {
-      buildBatchGraph(model);
+    function batchThresholdMetrics(model, config, updates, blocked, maxedOut, options = {}) {
+      const includeGraph = options.includeGraph !== false;
+      if (includeGraph) buildBatchGraph(model);
       const pairs = batchCollectUnhappyPairs(model, config);
       const blueCount = model.nodes.reduce((sum, node) => sum + node.color, 0);
       const memberships = model.groups.reduce((sum, group) => sum + group.members.size, 0);
@@ -1683,8 +1720,10 @@
         }
       }
       let activeEdges = 0;
-      for (const edge of model.edges) {
-        if (model.nodes[edge.a].color !== model.nodes[edge.b].color) activeEdges += 1;
+      if (includeGraph) {
+        for (const edge of model.edges) {
+          if (model.nodes[edge.a].color !== model.nodes[edge.b].color) activeEdges += 1;
+        }
       }
       const possibleEdges = model.nodes.length > 1 ? model.nodes.length * (model.nodes.length - 1) / 2 : 1;
       return {
@@ -1709,22 +1748,23 @@
         unhappyMemberships: pairs.length,
         unhappyBlueMemberships: pairs.filter(([node]) => node.color).length,
         unhappyRedMemberships: pairs.filter(([node]) => !node.color).length,
-        activeShare: model.edges.length ? activeEdges / model.edges.length : 0,
-        edgeDensity: model.edges.length / possibleEdges,
-        isolated: model.adjacency.filter(neighbors => neighbors.size === 0).length,
+        activeShare: includeGraph && model.edges.length ? activeEdges / model.edges.length : 0,
+        edgeDensity: includeGraph ? model.edges.length / possibleEdges : 0,
+        isolated: includeGraph ? model.adjacency.filter(neighbors => neighbors.size === 0).length : 0,
         meanGroupSize: model.groups.length ? memberships / model.groups.length : 0
       };
     }
 
-    function simulateThresholdBatch(config, seed) {
-      const model = createBatchModel(config, seed);
+    function simulateThresholdBatch(config, seed, options = {}) {
+      const lightweight = options.lightweight === true;
+      const model = createBatchModel(config, seed, { buildGraph: false });
       const maxUpdates = Math.max(4000, config.n * config.m * 8);
       let updates = 0;
       let blocked = false;
 
       while (updates < maxUpdates) {
         const pairs = shuffleWith(model.random, batchCollectUnhappyPairs(model, config));
-        if (!pairs.length) return batchThresholdMetrics(model, config, updates, false, false);
+        if (!pairs.length) return batchThresholdMetrics(model, config, updates, false, false, { includeGraph: !lightweight });
 
         let moved = false;
         for (const [node, group] of pairs) {
@@ -1757,7 +1797,7 @@
           break;
         }
       }
-      return batchThresholdMetrics(model, config, updates, blocked, updates >= maxUpdates);
+      return batchThresholdMetrics(model, config, updates, blocked, updates >= maxUpdates, { includeGraph: !lightweight });
     }
 
     function countActiveBatchEdges(model) {
@@ -1977,7 +2017,6 @@
         ...summaryFields(results, "maxedOut", "p_max_updates"),
         ...summaryFields(results, "segregatedShare", "segregated_share"),
         ...summaryFields(results, "nontrivialSegregatedShare", "nontrivial_segregated_share"),
-        ...summaryFields(results, "activeShare", "active_edge_share"),
         ...summaryFields(results, "updates", "updates"),
         ...summaryFields(results, "unhappyAgents", "unhappy_agents"),
         ...summaryFields(results, "blueOnlyGroups", "blue_only_groups"),
@@ -2117,22 +2156,25 @@
       const heatmap = {
         running: true,
         done: false,
+        stopped: false,
         values,
         grid: Array.from({ length: values.length }, () => Array(values.length).fill(null)),
         cells: [],
         cellsDone: 0,
         totalCells,
+        totalSimulations: totalCells * reps,
         simulationsDone: 0,
         reps,
         baseConfig,
-        step
+        step,
+        startedAt: performance.now()
       };
 
       state.heatmap = heatmap;
       state.running = false;
       setExport(null);
       setExperimentBusy(true);
-      els.ensemble.textContent = `Computing heatmap: ${totalCells} cells x ${reps} simulations per cell = ${totalCells * reps} simulations.`;
+      els.ensemble.textContent = `Computing heatmap: ${formatInteger(totalCells)} cells x ${reps} simulations per cell = ${formatInteger(totalCells * reps)} simulations. Use Stop to keep the completed cells as a partial CSV.`;
       updateReadout();
       renderScene();
 
@@ -2153,7 +2195,7 @@
           const config = { ...baseConfig, tauBlue, tauRed };
           const offset = Math.round(tauBlue * 10000) + Math.round(tauRed * 100000);
           const seed = config.seed + 1009 * repIndex + offset;
-          currentResults.push({ seed, ...simulateThresholdBatch(config, seed) });
+          currentResults.push({ seed, ...simulateThresholdBatch(config, seed, { lightweight: true }) });
           repIndex += 1;
           heatmap.simulationsDone += 1;
           if (repIndex < reps) continue;
@@ -2307,8 +2349,31 @@
       }, 20);
     }
 
+    function cancelExperiment() {
+      experimentToken += 1;
+      if (mode === "heatmap" && state?.heatmap?.running) {
+        const heatmap = state.heatmap;
+        heatmap.running = false;
+        heatmap.done = false;
+        heatmap.stopped = true;
+        updateHeatmapDerived(heatmap);
+        if (heatmap.cells.length) {
+          setExport({ filename: `rig-threshold-heatmap-partial-seed-${heatmap.baseConfig.seed}.csv`, rows: heatmap.cells });
+          els.ensemble.innerHTML = `Stopped after ${heatmap.cellsDone}/${heatmap.totalCells} cells and ${formatInteger(heatmap.simulationsDone)}/${formatInteger(heatmap.totalSimulations)} simulations. Partial CSV export is ready; for a complete fine figure, restart with fewer simulations per cell or a coarser &Delta;&tau;.${exportNote()}`;
+        } else {
+          setExport(null);
+          els.ensemble.textContent = "Heatmap stopped before completing a cell.";
+        }
+      }
+      setExperimentBusy(false);
+      updateReadout();
+      renderScene();
+    }
+
     function setExperimentBusy(isBusy) {
-      els.estimate.disabled = isBusy;
+      const stoppableHeatmap = isBusy && mode === "heatmap" && state?.heatmap?.running;
+      els.estimate.disabled = isBusy && !stoppableHeatmap;
+      els.estimate.textContent = mode === "heatmap" ? stoppableHeatmap ? "Stop" : "Compute heatmap" : "Estimate";
       els.sweepTau.disabled = isBusy;
       els.sweepTauGrid.disabled = isBusy;
       els.exportCsv.disabled = isBusy || !lastExport;
@@ -2422,7 +2487,8 @@
       const rows = values.length;
       const cols = values.length;
       const showCellLabels = state.config.heatmapLabels === "show";
-      const margin = { left: 70, right: 150, top: 66, bottom: 64 };
+      const denseTicks = cols > 31;
+      const margin = { left: 70, right: 150, top: 66, bottom: denseTicks ? 82 : 64 };
       const plotWidth = Math.max(160, view.width - margin.left - margin.right);
       const plotHeight = Math.max(160, view.height - margin.top - margin.bottom);
       const cellSize = Math.max(1.5, Math.min(plotWidth / cols, plotHeight / rows));
@@ -2473,7 +2539,7 @@
       sceneCtx.fillStyle = "#344054";
       sceneCtx.font = "700 12px Inter, system-ui, sans-serif";
       sceneCtx.textAlign = "center";
-      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + 42);
+      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + (denseTicks ? 60 : 42));
       sceneCtx.save();
       sceneCtx.translate(x0 - 48, y0 + gridHeight / 2);
       sceneCtx.rotate(-Math.PI / 2);
@@ -2483,10 +2549,21 @@
       sceneCtx.font = "11px Inter, system-ui, sans-serif";
       sceneCtx.fillStyle = "#526071";
       sceneCtx.textAlign = "center";
-      const tickStride = cols > 55 ? 10 : cols > 13 ? 2 : 1;
+      const tauStep = values.length > 1 ? Math.max(0.01, values[1] - values[0]) : 1;
+      const tickStride = Math.max(1, Math.round((cols > 13 ? 0.10 : tauStep) / tauStep));
       for (let col = 0; col < cols; col += 1) {
         if (col !== 0 && col !== cols - 1 && col % tickStride) continue;
-        sceneCtx.fillText(number(values[col], 2), x0 + col * cellSize + cellSize / 2, y0 + gridHeight + 20);
+        const tickX = x0 + col * cellSize + cellSize / 2;
+        if (denseTicks) {
+          sceneCtx.save();
+          sceneCtx.translate(tickX, y0 + gridHeight + 30);
+          sceneCtx.rotate(-Math.PI / 2);
+          sceneCtx.textAlign = "right";
+          sceneCtx.fillText(number(values[col], 2), 0, 4);
+          sceneCtx.restore();
+        } else {
+          sceneCtx.fillText(number(values[col], 2), tickX, y0 + gridHeight + 20);
+        }
       }
       sceneCtx.textAlign = "right";
       for (let row = 0; row < rows; row += 1) {
@@ -2997,7 +3074,10 @@
       els.seed.value = Math.floor(1 + Math.random() * 999999);
       resetSimulation(false);
     });
-    els.estimate.addEventListener("click", runCurrentEstimate);
+    els.estimate.addEventListener("click", () => {
+      if (mode === "heatmap" && state?.heatmap?.running) cancelExperiment();
+      else runCurrentEstimate();
+    });
     els.sweepTau.addEventListener("click", runTauSweep);
     els.sweepTauGrid.addEventListener("click", runTauGrid);
     els.exportCsv.addEventListener("click", downloadCsv);
