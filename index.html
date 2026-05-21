@@ -2514,7 +2514,7 @@
       const rows = values.length;
       const cols = values.length;
       const showCellLabels = state.config.heatmapLabels === "show";
-      const margin = { left: 70, right: 150, top: 66, bottom: 66 };
+      const margin = { left: 70, right: 150, top: 66, bottom: 96 };
       const plotWidth = Math.max(160, view.width - margin.left - margin.right);
       const plotHeight = Math.max(160, view.height - margin.top - margin.bottom);
       const cellSize = Math.max(1.5, Math.min(plotWidth / cols, plotHeight / rows));
@@ -2565,7 +2565,7 @@
       sceneCtx.fillStyle = "#344054";
       sceneCtx.font = "700 12px Inter, system-ui, sans-serif";
       sceneCtx.textAlign = "center";
-      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + 44);
+      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + 64);
       sceneCtx.save();
       sceneCtx.translate(x0 - 48, y0 + gridHeight / 2);
       sceneCtx.rotate(-Math.PI / 2);
@@ -2578,7 +2578,7 @@
       const tauStep = values.length > 1 ? Math.max(0.01, values[1] - values[0]) : 1;
       const tickStride = Math.max(1, Math.ceil(52 / cellSize), Math.round((cols > 13 ? 0.10 : tauStep) / tauStep));
       for (let col = 0; col < cols; col += 1) {
-        const nearLastTick = cols - 1 - col < Math.max(2, Math.floor(tickStride * 0.65));
+        const nearLastTick = cols - 1 - col < Math.max(3, Math.floor(tickStride * 0.9));
         if (col !== 0 && col !== cols - 1 && (col % tickStride || nearLastTick)) continue;
         const tickX = x0 + col * cellSize + cellSize / 2;
         sceneCtx.fillText(number(values[col], 2), tickX, y0 + gridHeight + 20);
