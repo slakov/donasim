@@ -558,8 +558,8 @@
 
         <label class="control hidden" id="heatmapStepControl">
           <span class="control-row"><span><strong>&Delta;&tau;</strong> heatmap step</span><output id="heatmapStepOut"></output></span>
-          <input id="heatmapStep" type="range" min="0.05" max="0.25" step="0.05" value="0.10">
-          <small>Resolution for the (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Default 0.10 gives 121 cells; 0.05 gives 441 cells.</small>
+          <input id="heatmapStep" type="range" min="0.01" max="0.25" step="0.01" value="0.10">
+          <small>Resolution for the (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Default 0.10 gives 121 cells; 0.05 gives 441; 0.01 gives 10201.</small>
         </label>
 
         <label class="control hidden" id="heatmapLabelsControl">
@@ -1954,7 +1954,7 @@
     }
 
     function tauGridValues(step) {
-      const value = clamp(Number(step) || 0.10, 0.05, 0.25);
+      const value = clamp(Number(step) || 0.10, 0.01, 0.25);
       const values = [];
       for (let tau = 0; tau < 1 - 1e-9; tau += value) {
         values.push(Number(tau.toFixed(2)));
@@ -2423,7 +2423,7 @@
       const margin = { left: 70, right: 76, top: 66, bottom: 64 };
       const plotWidth = Math.max(160, view.width - margin.left - margin.right);
       const plotHeight = Math.max(160, view.height - margin.top - margin.bottom);
-      const cellSize = Math.max(14, Math.min(plotWidth / cols, plotHeight / rows));
+      const cellSize = Math.max(1.5, Math.min(plotWidth / cols, plotHeight / rows));
       const gridWidth = cellSize * cols;
       const gridHeight = cellSize * rows;
       const x0 = margin.left + (plotWidth - gridWidth) / 2;
@@ -2446,9 +2446,11 @@
           const y = y0 + (rows - 1 - row) * cellSize;
           sceneCtx.fillStyle = cell ? heatColor(cell.segregated_share_mean) : "rgba(217, 222, 232, 0.42)";
           sceneCtx.fillRect(x, y, cellSize, cellSize);
-          sceneCtx.strokeStyle = "rgba(255, 255, 255, 0.72)";
-          sceneCtx.lineWidth = 1;
-          sceneCtx.strokeRect(x, y, cellSize, cellSize);
+          if (cellSize >= 10) {
+            sceneCtx.strokeStyle = "rgba(255, 255, 255, 0.72)";
+            sceneCtx.lineWidth = 1;
+            sceneCtx.strokeRect(x, y, cellSize, cellSize);
+          }
           if (showCellLabels && cell && cellSize >= 31) {
             sceneCtx.fillStyle = cell.segregated_share_mean > 0.55 ? "white" : "#344054";
             sceneCtx.font = "700 10px Inter, system-ui, sans-serif";
@@ -2475,13 +2477,14 @@
       sceneCtx.font = "11px Inter, system-ui, sans-serif";
       sceneCtx.fillStyle = "#526071";
       sceneCtx.textAlign = "center";
+      const tickStride = cols > 55 ? 10 : cols > 13 ? 2 : 1;
       for (let col = 0; col < cols; col += 1) {
-        if (col !== 0 && col !== cols - 1 && cols > 7 && col % 2) continue;
+        if (col !== 0 && col !== cols - 1 && col % tickStride) continue;
         sceneCtx.fillText(number(values[col], 2), x0 + col * cellSize + cellSize / 2, y0 + gridHeight + 20);
       }
       sceneCtx.textAlign = "right";
       for (let row = 0; row < rows; row += 1) {
-        if (row !== 0 && row !== rows - 1 && rows > 7 && row % 2) continue;
+        if (row !== 0 && row !== rows - 1 && row % tickStride) continue;
         sceneCtx.fillText(number(values[row], 2), x0 - 10, y0 + (rows - 1 - row) * cellSize + cellSize / 2 + 4);
       }
       sceneCtx.textAlign = "left";
@@ -2490,7 +2493,7 @@
       if (!heatmap || !heatmap.cells.length) {
         sceneCtx.fillStyle = "rgba(255, 255, 255, 0.92)";
         sceneCtx.strokeStyle = "rgba(217, 222, 232, 0.95)";
-        const width = Math.min(420, gridWidth - 24);
+        const width = Math.max(160, Math.min(420, gridWidth - 24));
         const height = 76;
         const x = x0 + (gridWidth - width) / 2;
         const y = y0 + (gridHeight - height) / 2;
