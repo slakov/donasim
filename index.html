@@ -575,9 +575,10 @@
           <span class="control-row"><span>No-target rule</span></span>
           <select id="fallbackRule">
             <option value="leave" selected>Leave group</option>
+            <option value="best">Best available</option>
             <option value="block">Block move</option>
           </select>
-          <small>If no satisfying target group exists, either drop that unhappy membership or keep it and allow blocked stops.</small>
+          <small>If no satisfying target exists, either leave, move toward the best same-colour share, or stay blocked.</small>
         </label>
 
         <label class="control" id="joinControl">
@@ -1103,17 +1104,21 @@
     }
 
     function chooseTargetGroup(node, excludeGroupId = null) {
-      const candidates = [];
+      const happyCandidates = [];
+      const fallbackCandidates = [];
 
       for (const group of state.groups) {
         if (group.id === excludeGroupId) continue;
         if (node.groups.has(group.id)) continue;
         const share = shareIfJoined(node, group);
-        if (share + 1e-9 >= demandForColor(node.color)) candidates.push(group);
+        fallbackCandidates.push({ group, share });
+        if (share + 1e-9 >= demandForColor(node.color)) happyCandidates.push(group);
       }
 
-      if (!candidates.length) return null;
-      return candidates[Math.floor(rng() * candidates.length)];
+      if (happyCandidates.length) return happyCandidates[Math.floor(rng() * happyCandidates.length)];
+      if (state.config.fallbackRule !== "best") return null;
+      const choice = weightedChoice(fallbackCandidates, candidate => 0.02 + candidate.share ** 4);
+      return choice ? choice.group : null;
     }
 
     function relocateMembership(node, fromGroup) {
@@ -1405,6 +1410,31 @@
       return Number.isFinite(value) ? value.toFixed(digits) : "0.00";
     }
 
+    function fallbackRuleLabel(rule) {
+      if (rule === "leave") return "leave group";
+      if (rule === "best") return "best available";
+      return "block move";
+    }
+
+    function fallbackRuleAction(rule) {
+      if (rule === "leave") return "drop that membership";
+      if (rule === "best") return "sample an available fallback group with probability increasing in the same-colour share after joining; if no alternative group exists, restore the old membership";
+      return "restore that membership and allow blocked stops";
+    }
+
+    function weightedChoice(items, weightOf, random = rng) {
+      if (!items.length) return null;
+      const weights = items.map(item => Math.max(0, Number(weightOf(item)) || 0));
+      const total = weights.reduce((sum, weight) => sum + weight, 0);
+      if (total <= 0) return items[Math.floor(random() * items.length)];
+      let threshold = random() * total;
+      for (let i = 0; i < items.length; i += 1) {
+        threshold -= weights[i];
+        if (threshold <= 0) return items[i];
+      }
+      return items[items.length - 1];
+    }
+
     function formatInteger(value) {
       return Math.round(Number(value) || 0).toLocaleString("en-US");
     }
@@ -1440,7 +1470,7 @@
       const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
       const values = heatmap?.values || tauGridValues(cfg.heatmapStep);
       const reps = heatmap?.reps || replicateCount(1000);
-      const noTargetText = cfg.fallbackRule === "leave" ? "no-target memberships leave the group" : "no-target memberships are restored";
+      const noTargetText = `no-target rule: ${fallbackRuleAction(cfg.fallbackRule)}`;
       els.formula.innerHTML = `Fixed parameters for the heatmap: n=${cfg.n}, m=${cfg.m}, p=&lambda;/m=${number(groupProbability, 3)}, p<sub>B</sub>=${number(cfg.pBlue, 2)}. For each cell (&tau;<sub>B</sub>,&tau;<sub>R</sub>), the dashboard estimates E[S], where S is the final fraction of nonempty groups with only blue or only red members; ${noTargetText}.`;
 
       if (!heatmap || !heatmap.done) {
@@ -1449,7 +1479,7 @@
           `<strong>Runtime reality:</strong> worst-case work is ${formatInteger(values.length * values.length * reps)} absorbing simulations, but clear red/green cells stop early. For an interactive run, prefer &Delta;&tau;=0.05 with max 30-50 simulations per cell; use &Delta;&tau;=0.02 or 0.01 only after narrowing the parameter regime.`,
           `<strong>Colour scale:</strong> red marks a mixed or low-segregation absorbing phase, amber marks the transition band, and green marks a highly segregated absorbing phase. These are outcome colours, separate from blue/red agent opinions.`,
           `<strong>Update rule:</strong> when a member is unhappy in a group, it moves only if at least one group it does not currently belong to would satisfy its own colour demand after joining; the target is chosen uniformly among those satisfying groups.`,
-          `<strong>No-target case:</strong> if there is no satisfying target, including the case where the member already belongs to all m groups, the selected rule is ${cfg.fallbackRule === "leave" ? "to drop that membership" : "to restore that membership and allow blocked stops"}.`,
+          `<strong>No-target case:</strong> if there is no satisfying target, including the case where the member already belongs to all m groups, the selected rule is to ${fallbackRuleAction(cfg.fallbackRule)}.`,
           `<strong>Sanity check:</strong> after computation, adjacent cells are scanned for large downward dips and the region &tau;<sub>B</sub>,&tau;<sub>R</sub>&gt;0.5 is checked for near-complete segregation. Departures are flagged so they can be separated from Monte Carlo noise or blocked-rule effects.`
         ]);
         return;
@@ -1460,6 +1490,8 @@
         : `${percent(heatmap.minHighDemand)} minimum E[S] with mean blocked probability ${percent(heatmap.meanHighDemandBlocked)}`;
       const highDemandCaveat = cfg.fallbackRule === "leave"
         ? "Values below 100% are therefore useful numerical warnings to inspect."
+        : cfg.fallbackRule === "best"
+          ? "Values below 100% may indicate fallback wandering near the transition band."
         : "If this is below 100%, inspect blocked runs and finite m constraints.";
       renderResultItems([
         `<strong>Heatmap estimate:</strong> ${heatmap.cellsDone} cells completed with ${heatmap.reps} simulations per cell; E[S] ranges from ${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}.`,
@@ -1479,13 +1511,11 @@
         : state.running ? "running" : "paused";
 
       els.formula.innerHTML = mode === "threshold"
-        ? `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Demands: &tau;<sub>B</sub>=${number(cfg.tauBlue, 2)}, &tau;<sub>R</sub>=${number(cfg.tauRed, 2)}. Same-colour shares use the manuscript convention x/(x+y), including the focal member. No-target rule: ${cfg.fallbackRule === "leave" ? "leave group" : "block move"}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Initial E[edge density] = ${number(metrics.expectedEdgeDensity, 3)}; observed |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`
+        ? `RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Demands: &tau;<sub>B</sub>=${number(cfg.tauBlue, 2)}, &tau;<sub>R</sub>=${number(cfg.tauRed, 2)}. Same-colour shares use the manuscript convention x/(x+y), including the focal member. No-target rule: ${fallbackRuleLabel(cfg.fallbackRule)}. Expected group size n&lambda;/m = ${number(metrics.expectedGroupSize, 2)}; observed mean |C| = ${number(metrics.meanGroupSize, 2)}. Initial E[edge density] = ${number(metrics.expectedEdgeDensity, 3)}; observed |E|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`
         : `Initial RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Dynamic VM graph: join rate &gamma;=${number(cfg.joinRate, 2)}, leave rate &mu;=${number(cfg.leaveRate, 2)}. Initial E[degree] = ${number(metrics.expectedDegree, 2)}; observed mean |C(t)| = ${number(metrics.meanGroupSize, 2)}; projected density |E(t)|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`;
 
       if (mode === "threshold") {
-        const fallbackText = cfg.fallbackRule === "leave"
-          ? "If none exists, including when the member is already in all m groups, that unhappy membership is dropped."
-          : "If none exists, including when the member is already in all m groups, the member stays in the old group.";
+        const fallbackText = `If none exists, including when the member is already in all m groups, the rule is to ${fallbackRuleAction(cfg.fallbackRule)}.`;
         renderResultItems([
           `<strong>Stopping statistic:</strong> ${stopText}; ${metrics.unhappyAgents} unhappy agents remain (${metrics.unhappyBlueAgents} blue, ${metrics.unhappyRedAgents} red) across ${metrics.unhappy} unhappy memberships.`,
           `<strong>Update rule:</strong> an unhappy membership searches the groups the member does not currently belong to; if at least one would satisfy that member's own demand after joining, the target group is sampled uniformly. ${fallbackText}`,
@@ -1683,13 +1713,18 @@
     }
 
     function batchChooseTarget(model, node, config) {
-      const candidates = [];
+      const happyCandidates = [];
+      const fallbackCandidates = [];
       for (const group of model.groups) {
         if (node.groups.has(group.id)) continue;
         const share = batchShareIfJoined(node, group);
-        if (share + 1e-9 >= demandForColor(node.color, config)) candidates.push(group);
+        fallbackCandidates.push({ group, share });
+        if (share + 1e-9 >= demandForColor(node.color, config)) happyCandidates.push(group);
       }
-      return candidates.length ? candidates[Math.floor(model.random() * candidates.length)] : null;
+      if (happyCandidates.length) return happyCandidates[Math.floor(model.random() * happyCandidates.length)];
+      if (config.fallbackRule !== "best") return null;
+      const choice = weightedChoice(fallbackCandidates, candidate => 0.02 + candidate.share ** 4, model.random);
+      return choice ? choice.group : null;
     }
 
     function batchThresholdMetrics(model, config, updates, blocked, maxedOut, options = {}) {
@@ -2096,7 +2131,7 @@
       const rows = [
         ["Grid", `${heatmap.values.length} x ${heatmap.values.length} cells, max ${heatmap.reps} simulations per cell`],
         ["Actual reps/cell", `mean ${number(heatmap.meanRepsPerCell, 1)}`],
-        ["No-target rule", heatmap.baseConfig.fallbackRule === "leave" ? "leave group" : "block move"],
+        ["No-target rule", fallbackRuleLabel(heatmap.baseConfig.fallbackRule)],
         ["E[S] range", `${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}`],
         ["High-demand min", highDemandText],
         ["Monotone dips", heatmap.monotoneViolations ? `${heatmap.monotoneViolations} over 4 pp` : "none over 4 pp"],
@@ -2531,7 +2566,7 @@
       sceneCtx.font = "12px Inter, system-ui, sans-serif";
       sceneCtx.fillStyle = "#5c6678";
       const repsText = heatmap ? `${heatmap.reps} simulations per cell` : "choose Compute heatmap";
-      sceneCtx.fillText(`fixed n=${state.config.n}, m=${state.config.m}, lambda=${number(state.config.lambda, 2)}, p_B=${number(state.config.pBlue, 2)}; ${repsText}; ${state.config.fallbackRule}`, titleX, 52);
+      sceneCtx.fillText(`fixed n=${state.config.n}, m=${state.config.m}, lambda=${number(state.config.lambda, 2)}, p_B=${number(state.config.pBlue, 2)}; ${repsText}; ${fallbackRuleLabel(state.config.fallbackRule)}`, titleX, 52);
 
       for (let row = 0; row < rows; row += 1) {
         for (let col = 0; col < cols; col += 1) {
