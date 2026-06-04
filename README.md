@@ -18,8 +18,9 @@ JavaScript are inline in `index.html`.
   the simulator samples uniformly among groups not currently containing that
   member that would satisfy the member after joining. If no such group exists,
   the no-target rule is explicit: by default the unhappy membership leaves the
-  group, while the conservative "block move" option restores the membership and
-  can stop in a blocked state.
+  group; the "best available" option samples an available group with probability
+  increasing in the same-colour share after joining; and the conservative
+  "block move" option restores the membership and can stop in a blocked state.
 - Voter dynamics: members copy a random graph neighbour while the RIG itself can
   keep changing. The initial graph is drawn with membership probability
   `lambda / m`; after that, voter-mode controls `gamma` and `mu` govern group
@@ -35,10 +36,13 @@ absorption time. The threshold experiments include both a diagonal sweep and a
 two-threshold grid. The heatmap tab fixes `n`, `m`, `lambda`, and `p_B`, then
 estimates the surface `(tau_B, tau_R, E[S])`, where `S` is the final fraction of
 nonempty monochromatic groups. It defaults to `Delta tau = 0.10` and 100
-simulations per cell, with up to 1000 simulations per cell and `Delta tau`
-values down to `0.01` available for final high-resolution surfaces. Heatmaps
-render as colour-only figures by default, with percentage labels available as a
-diagnostic toggle. The CSV also exports blocked-run probability and the
-size-at-least-two segregation diagnostic for downstream analysis.
+maximum simulations per cell, but uses adaptive Monte Carlo stopping so cells
+that are clearly red or clearly green finish early. Up to 1000 simulations per
+cell and `Delta tau` values down to `0.01` are available for final
+high-resolution surfaces after narrowing the parameter regime. Heatmaps render
+as colour-only figures by default, with percentage labels available as a
+diagnostic toggle. The CSV also exports the actual repetitions used per cell,
+blocked-run probability, max-update probability, and the size-at-least-two
+segregation diagnostic for downstream analysis.
 
 The source note is in [`docs/schelling_rig_note.tex`](docs/schelling_rig_note.tex).

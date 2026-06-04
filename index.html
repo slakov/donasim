@@ -578,7 +578,7 @@
             <option value="best">Best available</option>
             <option value="block">Block move</option>
           </select>
-          <small>If no satisfying target exists, either leave, move toward the best same-colour share, or stay blocked.</small>
+          <small>If no satisfying target exists, either leave, prefer a higher same-colour share, or stay blocked.</small>
         </label>
 
         <label class="control" id="joinControl">
@@ -887,7 +887,7 @@
       if (mode === "threshold") {
         els.ensemble.textContent = "Run an estimate, a diagonal sweep, or a two-threshold grid to aggregate this parameter point over many seeds.";
       } else if (mode === "heatmap") {
-        els.ensemble.innerHTML = "Compute the heatmap to estimate E[S] on a (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Red, amber, and green encode low, transition, and high final segregation; export the CSV to fit publication contours separately.";
+        els.ensemble.innerHTML = "Compute the heatmap to estimate E[S] on a (&tau;<sub>B</sub>, &tau;<sub>R</sub>) grid. Red, amber, and green encode low, transition, and high final segregation; export the CSV to fit level sets separately.";
       } else {
         els.ensemble.textContent = "Run an estimate to aggregate voter absorption over many seeds.";
       }
@@ -1418,7 +1418,7 @@
 
     function fallbackRuleAction(rule) {
       if (rule === "leave") return "drop that membership";
-      if (rule === "best") return "sample an available fallback group with probability increasing in the same-colour share after joining; if no alternative group exists, restore the old membership";
+      if (rule === "best") return "sample an available fallback group with probability proportional to 0.02 + q^4, where q is the same-colour share after joining; if no alternative group exists, restore the old membership";
       return "restore that membership and allow blocked stops";
     }
 
@@ -1461,6 +1461,13 @@
       return `, adaptive ETA ${formatDuration((remaining / rate) * 1000)} at ${number(rate, 1)}/s`;
     }
 
+    function heatmapRepetitionText(heatmap) {
+      if (!heatmap) return `up to ${replicateCount(1000)} simulations per cell`;
+      const mean = heatmap.meanRepsPerCell || heatmap.reps;
+      if (heatmap.done || heatmap.stopped) return `max ${heatmap.reps}/cell, mean actual ${number(mean, 1)}`;
+      return `up to ${heatmap.reps}/cell`;
+    }
+
     function renderResultItems(items) {
       els.interpretation.innerHTML = items.map(item => `<li>${item}</li>`).join("");
     }
@@ -1494,11 +1501,11 @@
           ? "Values below 100% may indicate fallback wandering near the transition band."
         : "If this is below 100%, inspect blocked runs and finite m constraints.";
       renderResultItems([
-        `<strong>Heatmap estimate:</strong> ${heatmap.cellsDone} cells completed with ${heatmap.reps} simulations per cell; E[S] ranges from ${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}.`,
+        `<strong>Heatmap estimate:</strong> ${heatmap.cellsDone} cells completed with ${heatmapRepetitionText(heatmap)}; E[S] ranges from ${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}.`,
         `<strong>Phase-boundary readout:</strong> read the transition band from the colour field, then export the CSV to fit level sets of E[S]. A straight diagonal would support a sum-of-tolerances rule; a circular arc would suggest a nonlinear or binomial-tail mechanism that should be fitted across several n,m,&lambda; settings.`,
         `<strong>High-demand check:</strong> among sampled cells with &tau;<sub>B</sub>,&tau;<sub>R</sub>&gt;0.5, ${highDemandText}. ${highDemandCaveat}`,
         `<strong>Monotonicity check:</strong> ${heatmap.monotoneViolations ? `${heatmap.monotoneViolations} adjacent decreases exceed 4 percentage points` : "no adjacent decreases exceed 4 percentage points"} for E[S] on the sampled grid.`,
-        `<strong>Research output:</strong> export the CSV to fit or report the surface (&tau;<sub>B</sub>,&tau;<sub>R</sub>, E[S]) together with P(no happy move), stopping time, and the size-at-least-two segregation diagnostic.`
+        `<strong>Research output:</strong> export the CSV to fit or report the surface (&tau;<sub>B</sub>,&tau;<sub>R</sub>, E[S]) together with P(no happy move), P(max updates), stopping time, and the size-at-least-two segregation diagnostic.`
       ]);
     }
 
@@ -1685,6 +1692,20 @@
       return { activeDelta };
     }
 
+    function addThresholdBatchMembership(node, group) {
+      node.groups.add(group.id);
+      group.members.add(node.id);
+      if (node.color) group.blue += 1;
+      else group.red += 1;
+    }
+
+    function removeThresholdBatchMembership(node, group) {
+      node.groups.delete(group.id);
+      group.members.delete(node.id);
+      if (node.color) group.blue -= 1;
+      else group.red -= 1;
+    }
+
     function batchSameShare(model, node, group) {
       if (group.members.size <= 1) return 1;
       return node.color ? group.blue / group.members.size : group.red / group.members.size;
@@ -1809,23 +1830,17 @@
         for (const [node, group] of pairs) {
           if (!node.groups.has(group.id) || batchSameShare(model, node, group) + 1e-9 >= demandForColor(node.color, config)) continue;
           const target = batchChooseTarget(model, node, config);
-          node.groups.delete(group.id);
-          group.members.delete(node.id);
-          recountBatchGroup(model, group);
+          removeThresholdBatchMembership(node, group);
           if (!target) {
             if (config.fallbackRule !== "leave") {
-              node.groups.add(group.id);
-              group.members.add(node.id);
-              recountBatchGroup(model, group);
+              addThresholdBatchMembership(node, group);
               continue;
             }
             updates += 1;
             moved = true;
             break;
           }
-          node.groups.add(target.id);
-          target.members.add(node.id);
-          recountBatchGroup(model, target);
+          addThresholdBatchMembership(node, target);
           updates += 1;
           moved = true;
           break;
@@ -2107,6 +2122,7 @@
         heatmap.minSegregatedShare = 0;
         heatmap.minHighDemand = null;
         heatmap.meanBlocked = 0;
+        heatmap.meanMaxedOut = 0;
         heatmap.meanHighDemandBlocked = null;
         heatmap.meanRepsPerCell = heatmap.reps || 0;
         heatmap.monotoneViolations = 0;
@@ -2115,6 +2131,7 @@
       heatmap.maxSegregatedShare = Math.max(...cells.map(cell => cell.segregated_share_mean));
       heatmap.minSegregatedShare = Math.min(...cells.map(cell => cell.segregated_share_mean));
       heatmap.meanBlocked = cells.reduce((sum, cell) => sum + cell.p_blocked_mean, 0) / cells.length;
+      heatmap.meanMaxedOut = cells.reduce((sum, cell) => sum + cell.p_max_updates_mean, 0) / cells.length;
       heatmap.meanRepsPerCell = cells.reduce((sum, cell) => sum + cell.reps, 0) / cells.length;
       const highDemand = cells.filter(cell => cell.tau_B > 0.5 && cell.tau_R > 0.5);
       heatmap.minHighDemand = highDemand.length ? Math.min(...highDemand.map(cell => cell.segregated_share_mean)) : null;
@@ -2135,7 +2152,8 @@
         ["E[S] range", `${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}`],
         ["High-demand min", highDemandText],
         ["Monotone dips", heatmap.monotoneViolations ? `${heatmap.monotoneViolations} over 4 pp` : "none over 4 pp"],
-        ["Mean P(blocked)", percent(heatmap.meanBlocked)]
+        ["Mean P(blocked)", percent(heatmap.meanBlocked)],
+        ["Mean P(max updates)", percent(heatmap.meanMaxedOut)]
       ];
       els.ensemble.innerHTML = `Heatmap completed for fixed n=${heatmap.baseConfig.n}, m=${heatmap.baseConfig.m}, &lambda;=${number(heatmap.baseConfig.lambda, 2)}, and p<sub>B</sub>=${number(heatmap.baseConfig.pBlue, 2)}. Cell colour is E[S], where S is the final fraction of nonempty monochromatic groups: red is low segregation, amber is transition, green is high segregation. Clear cells stop early by adaptive Monte Carlo; CSV records the actual reps used per cell.${tableHtml(["Diagnostic", "Value"], rows)}${exportNote()}`;
     }
@@ -2543,21 +2561,34 @@
       return "rgb(22, 163, 74)";
     }
 
+    function fitCanvasText(ctx, text, maxWidth) {
+      if (ctx.measureText(text).width <= maxWidth) return text;
+      let low = 0;
+      let high = text.length;
+      while (low < high) {
+        const mid = Math.ceil((low + high) / 2);
+        if (ctx.measureText(`${text.slice(0, mid)}...`).width <= maxWidth) low = mid;
+        else high = mid - 1;
+      }
+      return `${text.slice(0, Math.max(0, low)).trimEnd()}...`;
+    }
+
     function drawHeatmap() {
       const heatmap = state.heatmap;
       const values = heatmap?.values || tauGridValues(state.config.heatmapStep);
       const rows = values.length;
       const cols = values.length;
       const showCellLabels = state.config.heatmapLabels === "show";
-      const margin = { left: 76, right: 150, top: 66, bottom: 78 };
+      const margin = { left: 76, right: 150, top: 66, bottom: 96 };
       const plotWidth = Math.max(160, view.width - margin.left - margin.right);
       const plotHeight = Math.max(160, view.height - margin.top - margin.bottom);
       const cellSize = Math.max(1.5, Math.min(plotWidth / cols, plotHeight / rows));
       const gridWidth = cellSize * cols;
       const gridHeight = cellSize * rows;
       const x0 = margin.left + (plotWidth - gridWidth) / 2;
-      const y0 = margin.top + (plotHeight - gridHeight) / 2;
-      const titleX = view.width > 720 ? 210 : margin.left;
+      const verticalSlack = Math.max(0, plotHeight - gridHeight);
+      const y0 = margin.top + Math.min(72, verticalSlack * 0.28);
+      const titleX = view.width > 560 ? 190 : margin.left;
 
       sceneCtx.save();
       sceneCtx.font = "700 18px Inter, system-ui, sans-serif";
@@ -2565,8 +2596,9 @@
       sceneCtx.fillText("Heatmap of final segregation E[S]", titleX, 32);
       sceneCtx.font = "12px Inter, system-ui, sans-serif";
       sceneCtx.fillStyle = "#5c6678";
-      const repsText = heatmap ? `${heatmap.reps} simulations per cell` : "choose Compute heatmap";
-      sceneCtx.fillText(`fixed n=${state.config.n}, m=${state.config.m}, lambda=${number(state.config.lambda, 2)}, p_B=${number(state.config.pBlue, 2)}; ${repsText}; ${fallbackRuleLabel(state.config.fallbackRule)}`, titleX, 52);
+      const repsText = heatmap ? heatmapRepetitionText(heatmap) : "choose Compute heatmap";
+      const subtitle = `fixed n=${state.config.n}, m=${state.config.m}, lambda=${number(state.config.lambda, 2)}, p_B=${number(state.config.pBlue, 2)}; ${repsText}; ${fallbackRuleLabel(state.config.fallbackRule)}`;
+      sceneCtx.fillText(fitCanvasText(sceneCtx, subtitle, view.width - titleX - 14), titleX, 52);
 
       for (let row = 0; row < rows; row += 1) {
         for (let col = 0; col < cols; col += 1) {
@@ -2596,7 +2628,7 @@
       sceneCtx.fillStyle = "#344054";
       sceneCtx.font = "700 12px Inter, system-ui, sans-serif";
       sceneCtx.textAlign = "center";
-      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + 50);
+      sceneCtx.fillText("tau_R", x0 + gridWidth / 2, y0 + gridHeight + 66);
       sceneCtx.save();
       sceneCtx.translate(x0 - 48, y0 + gridHeight / 2);
       sceneCtx.rotate(-Math.PI / 2);
@@ -2608,7 +2640,7 @@
       sceneCtx.textAlign = "center";
       const tickValues = heatmapAxisTicks(values);
       for (const tick of tickValues) {
-        sceneCtx.fillText(number(tick, 2), heatmapAxisX(tick, x0, gridWidth, cellSize), y0 + gridHeight + 20);
+        sceneCtx.fillText(number(tick, 2), heatmapAxisX(tick, x0, gridWidth, cellSize), y0 + gridHeight + 26);
       }
       sceneCtx.textAlign = "right";
       for (const tick of tickValues) {
@@ -2633,14 +2665,14 @@
         sceneCtx.fillText("Ready for threshold surface estimation", x + width / 2, y + 30);
         sceneCtx.font = "12px Inter, system-ui, sans-serif";
         sceneCtx.fillStyle = "#5c6678";
-        sceneCtx.fillText(`${rows * cols} cells; ${replicateCount(1000)} simulations per cell`, x + width / 2, y + 52);
+        sceneCtx.fillText(`${rows * cols} cells; up to ${replicateCount(1000)} simulations per cell`, x + width / 2, y + 52);
         sceneCtx.textAlign = "left";
       }
       sceneCtx.restore();
     }
 
     function heatmapAxisTicks() {
-      return [0, 0.25, 0.5, 0.75, 1];
+      return [0, 0.2, 0.4, 0.6, 0.8, 1];
     }
 
     function heatmapAxisX(value, x0, gridWidth, cellSize) {
