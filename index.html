@@ -203,6 +203,8 @@
       position: relative;
       overflow: hidden;
       min-height: 620px;
+      height: 620px;
+      align-self: start;
     }
 
     #scene {
@@ -345,6 +347,38 @@
     .result-list strong {
       color: var(--ink);
       font-weight: 720;
+    }
+
+    .research-lens {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+
+    .lens-item {
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid #edf0f5;
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .lens-item span {
+      display: block;
+      color: #7a8597;
+      font-size: 11px;
+      line-height: 1.25;
+    }
+
+    .lens-item strong {
+      display: block;
+      margin-top: 3px;
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.2;
+      font-weight: 720;
+      font-variant-numeric: tabular-nums;
     }
 
     .formula {
@@ -497,6 +531,10 @@
         flex: 1;
       }
 
+      .research-lens {
+        grid-template-columns: 1fr;
+      }
+
       .workspace {
         grid-template-columns: 1fr;
       }
@@ -504,6 +542,7 @@
       .stage,
       #scene {
         min-height: 520px;
+        height: 520px;
       }
     }
   </style>
@@ -646,6 +685,7 @@
 
         <section class="interpretation" aria-label="Results interpretation">
           <h3>Numerical interpretation</h3>
+          <div id="researchLens" class="research-lens" aria-label="Research diagnostics"></div>
           <ul id="interpretation" class="result-list"></ul>
           <div id="formula" class="formula"></div>
         </section>
@@ -661,6 +701,8 @@
             <button id="estimate" type="button">Estimate</button>
             <button id="sweepTau" type="button">Sweep diagonal</button>
             <button id="sweepTauGrid" type="button">Sweep grid</button>
+            <button id="scaleSweep" type="button">Scale n</button>
+            <button id="voterSweep" type="button">Sweep gamma</button>
             <button id="exportCsv" type="button" disabled>Download CSV</button>
           </div>
           <div id="ensemble" class="ensemble">Run an estimate to aggregate this parameter point over many seeds.</div>
@@ -727,6 +769,7 @@
       metricThirdLabel: document.getElementById("metricThirdLabel"),
       bars: document.getElementById("bars"),
       interpretation: document.getElementById("interpretation"),
+      researchLens: document.getElementById("researchLens"),
       formula: document.getElementById("formula"),
       replicates: document.getElementById("replicates"),
       replicatesLabel: document.getElementById("replicatesLabel"),
@@ -734,6 +777,8 @@
       estimate: document.getElementById("estimate"),
       sweepTau: document.getElementById("sweepTau"),
       sweepTauGrid: document.getElementById("sweepTauGrid"),
+      scaleSweep: document.getElementById("scaleSweep"),
+      voterSweep: document.getElementById("voterSweep"),
       exportCsv: document.getElementById("exportCsv"),
       ensemble: document.getElementById("ensemble")
     };
@@ -874,6 +919,8 @@
       els.actionControls.classList.toggle("hidden", mode === "heatmap");
       els.sweepTau.classList.toggle("hidden", mode !== "threshold");
       els.sweepTauGrid.classList.toggle("hidden", mode !== "threshold");
+      els.scaleSweep.classList.toggle("hidden", mode === "heatmap");
+      els.voterSweep.classList.toggle("hidden", mode !== "voter");
       els.estimate.textContent = mode === "heatmap" ? "Compute heatmap" : "Estimate";
       els.replicates.max = mode === "heatmap" ? "1000" : "200";
       els.replicates.step = mode === "heatmap" ? "10" : "5";
@@ -1410,6 +1457,29 @@
       return Number.isFinite(value) ? value.toFixed(digits) : "0.00";
     }
 
+    function derivedConfigFields(config) {
+      const membershipProbability = config.m ? clamp(config.lambda / config.m, 0, 1) : 0;
+      const expectedEdgeDensity = 1 - (1 - membershipProbability * membershipProbability) ** config.m;
+      return {
+        beta_n_over_m: config.m ? config.n / config.m : 0,
+        membership_probability: membershipProbability,
+        expected_memberships: config.n * config.lambda,
+        expected_group_size: config.m ? config.n * config.lambda / config.m : 0,
+        expected_degree: (config.n - 1) * expectedEdgeDensity,
+        expected_edge_density: expectedEdgeDensity
+      };
+    }
+
+    function observedMeanDegree(edgeDensity, n) {
+      return Math.max(0, edgeDensity * Math.max(0, n - 1));
+    }
+
+    function setResearchLens(items) {
+      els.researchLens.innerHTML = items
+        .map(item => `<div class="lens-item"><span>${item[0]}</span><strong>${item[1]}</strong></div>`)
+        .join("");
+    }
+
     function fallbackRuleLabel(rule) {
       if (rule === "leave") return "leave group";
       if (rule === "best") return "best available";
@@ -1475,9 +1545,21 @@
     function updateHeatmapInterpretation(heatmap) {
       const cfg = state.config;
       const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
+      const derived = derivedConfigFields(cfg);
       const values = heatmap?.values || tauGridValues(cfg.heatmapStep);
       const reps = heatmap?.reps || replicateCount(1000);
       const noTargetText = `no-target rule: ${fallbackRuleAction(cfg.fallbackRule)}`;
+      const transitionCells = heatmap?.cells?.length
+        ? heatmap.cells.filter(cell => cell.segregated_share_mean >= 0.35 && cell.segregated_share_mean <= 0.65).length
+        : 0;
+      setResearchLens([
+        ["RIG scale n/m", number(derived.beta_n_over_m, 2)],
+        ["E degree", number(derived.expected_degree, 2)],
+        ["Grid cells done", heatmap ? `${heatmap.cellsDone}/${heatmap.totalCells}` : `${values.length * values.length}`],
+        ["Transition cells", heatmap?.cells?.length ? `${transitionCells}/${heatmap.cells.length}` : "--"],
+        ["Diagonal 50% tau", heatmap?.contours?.all50?.diagonalTau === null || heatmap?.contours?.all50?.diagonalTau === undefined ? "--" : number(heatmap.contours.all50.diagonalTau, 2)],
+        ["Asymmetry", heatmap?.done ? `${number(100 * heatmap.asymmetryScore, 1)} pp` : "--"]
+      ]);
       els.formula.innerHTML = `Fixed parameters for the heatmap: n=${cfg.n}, m=${cfg.m}, p=&lambda;/m=${number(groupProbability, 3)}, p<sub>B</sub>=${number(cfg.pBlue, 2)}. For each cell (&tau;<sub>B</sub>,&tau;<sub>R</sub>), the dashboard estimates E[S], where S is the final fraction of nonempty groups with only blue or only red members; ${noTargetText}.`;
 
       if (!heatmap || !heatmap.done) {
@@ -1502,7 +1584,7 @@
         : "If this is below 100%, inspect blocked runs and finite m constraints.";
       renderResultItems([
         `<strong>Heatmap estimate:</strong> ${heatmap.cellsDone} cells completed with ${heatmapRepetitionText(heatmap)}; E[S] ranges from ${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}.`,
-        `<strong>Phase-boundary readout:</strong> read the transition band from the colour field, then export the CSV to fit level sets of E[S]. A straight diagonal would support a sum-of-tolerances rule; a circular arc would suggest a nonlinear or binomial-tail mechanism that should be fitted across several n,m,&lambda; settings.`,
+        `<strong>Phase-boundary readout:</strong> sampled diagonal crossings are &tau;=${contourValueText(heatmap.contours.all50?.diagonalTau)} for E[S]=0.5 and &tau;=${contourValueText(heatmap.contours.all90?.diagonalTau)} for E[S]=0.9. Mean absolute asymmetry across mirrored cells is ${number(100 * heatmap.asymmetryScore, 1)} percentage points.`,
         `<strong>High-demand check:</strong> among sampled cells with &tau;<sub>B</sub>,&tau;<sub>R</sub>&gt;0.5, ${highDemandText}. ${highDemandCaveat}`,
         `<strong>Monotonicity check:</strong> ${heatmap.monotoneViolations ? `${heatmap.monotoneViolations} adjacent decreases exceed 4 percentage points` : "no adjacent decreases exceed 4 percentage points"} for E[S] on the sampled grid.`,
         `<strong>Research output:</strong> export the CSV to fit or report the surface (&tau;<sub>B</sub>,&tau;<sub>R</sub>, E[S]) together with P(no happy move), P(max updates), stopping time, and the size-at-least-two segregation diagnostic.`
@@ -1512,7 +1594,10 @@
     function updateInterpretation(metrics) {
       const cfg = state.config;
       const groupProbability = cfg.m ? cfg.lambda / cfg.m : 0;
+      const derived = derivedConfigFields(cfg);
       const denominator = cfg.n > 1 ? cfg.n * (cfg.n - 1) / 2 : 1;
+      const observedDegree = observedMeanDegree(metrics.edgeDensity, cfg.n);
+      const singletonShare = metrics.nonemptyGroups ? metrics.singletonGroups / metrics.nonemptyGroups : 0;
       const stopText = state.settled
         ? state.blocked ? "stopped with no legal happy move" : `absorbed after ${state.tick} updates`
         : state.running ? "running" : "paused";
@@ -1522,6 +1607,12 @@
         : `Initial RIG draw: p(group membership) = &lambda;/m = ${number(groupProbability, 3)}. Dynamic VM graph: join rate &gamma;=${number(cfg.joinRate, 2)}, leave rate &mu;=${number(cfg.leaveRate, 2)}. Initial E[degree] = ${number(metrics.expectedDegree, 2)}; observed mean |C(t)| = ${number(metrics.meanGroupSize, 2)}; projected density |E(t)|/C(n,2) = ${number(metrics.edgeDensity, 3)}.`;
 
       if (mode === "threshold") {
+        setResearchLens([
+          ["RIG scale n/m", number(derived.beta_n_over_m, 2)],
+          ["Mean degree obs/exp", `${number(observedDegree, 2)} / ${number(derived.expected_degree, 2)}`],
+          ["Singleton bias", percent(singletonShare)],
+          ["Active edges", percent(metrics.activeShare)]
+        ]);
         const fallbackText = `If none exists, including when the member is already in all m groups, the rule is to ${fallbackRuleAction(cfg.fallbackRule)}.`;
         renderResultItems([
           `<strong>Stopping statistic:</strong> ${stopText}; ${metrics.unhappyAgents} unhappy agents remain (${metrics.unhappyBlueAgents} blue, ${metrics.unhappyRedAgents} red) across ${metrics.unhappy} unhappy memberships.`,
@@ -1532,6 +1623,12 @@
           `<strong>Model use:</strong> across seeds, record final segregation share, unhappy agents, and stopping time as empirical estimates for the demand surface (&tau;<sub>B</sub>, &tau;<sub>R</sub>) at which segregation becomes sharp.`
         ]);
       } else {
+        setResearchLens([
+          ["RIG scale n/m", number(derived.beta_n_over_m, 2)],
+          ["Mean degree obs/exp", `${number(observedDegree, 2)} / ${number(derived.expected_degree, 2)}`],
+          ["Isolated members", percent(metrics.isolated / cfg.n)],
+          ["Active edges", `${metrics.activeEdges}`]
+        ]);
         const globalConsensus = metrics.blueShare === 0 || metrics.blueShare === 1;
         const localIsAbsorbing = cfg.joinRate === 0 && metrics.activeEdges === 0;
         renderResultItems([
@@ -1808,9 +1905,12 @@
         unhappyMemberships: pairs.length,
         unhappyBlueMemberships: pairs.filter(([node]) => node.color).length,
         unhappyRedMemberships: pairs.filter(([node]) => !node.color).length,
+        activeEdges,
+        edgeCount: includeGraph ? model.edges.length : 0,
         activeShare: includeGraph && model.edges.length ? activeEdges / model.edges.length : 0,
         edgeDensity: includeGraph ? model.edges.length / possibleEdges : 0,
         isolated: includeGraph ? model.adjacency.filter(neighbors => neighbors.size === 0).length : 0,
+        memberships,
         meanGroupSize: model.groups.length ? memberships / model.groups.length : 0
       };
     }
@@ -1954,8 +2054,10 @@
         leaves,
         blueShare: blueCount / model.nodes.length,
         activeEdges,
+        edgeCount: model.edgeMap.size,
         edgeDensity: model.edgeMap.size / possibleEdges,
         isolated: model.adjacency.filter(neighbors => neighbors.size === 0).length,
+        memberships,
         meanGroupSize: model.groups.length ? memberships / model.groups.length : 0
       };
     }
@@ -2027,6 +2129,7 @@
         n: config.n,
         m: config.m,
         lambda: config.lambda,
+        ...derivedConfigFields(config),
         tau_B: config.tauBlue,
         tau_R: config.tauRed,
         fallback_rule: config.fallbackRule,
@@ -2042,6 +2145,32 @@
         [`${prefix}_mean`]: summary.avg * scale,
         [`${prefix}_se`]: summary.se * scale
       };
+    }
+
+    function resultDerivedFields(result, config, estimateMode) {
+      const derived = derivedConfigFields(config);
+      const observedDegree = observedMeanDegree(result.edgeDensity || 0, config.n);
+      const fields = {
+        observed_mean_degree: observedDegree,
+        observed_expected_degree_ratio: derived.expected_degree ? observedDegree / derived.expected_degree : 0
+      };
+      if (estimateMode === "threshold") {
+        fields.updates_over_n = result.updates / config.n;
+        fields.updates_over_expected_memberships = derived.expected_memberships ? result.updates / derived.expected_memberships : 0;
+        fields.singleton_share = result.nonemptyGroups ? result.singletonGroups / result.nonemptyGroups : 0;
+        fields.monochromatic_group_imbalance = result.nonemptyGroups ? (result.blueOnlyGroups - result.redOnlyGroups) / result.nonemptyGroups : 0;
+      } else {
+        fields.events_over_n = result.events / config.n;
+        fields.graph_turnover_per_event = result.events ? (result.joins + result.leaves) / result.events : 0;
+      }
+      return fields;
+    }
+
+    function augmentResults(results, config, estimateMode) {
+      return results.map(result => ({
+        ...result,
+        ...resultDerivedFields(result, config, estimateMode)
+      }));
     }
 
     function firstCrossing(rows, key, level) {
@@ -2115,6 +2244,70 @@
       return dips;
     }
 
+    function crossingInSeries(points, level) {
+      const valid = points.filter(point => point && Number.isFinite(point.value));
+      if (!valid.length) return null;
+      if (valid[0].value >= level) return valid[0].tau;
+      for (let i = 1; i < valid.length; i += 1) {
+        const prev = valid[i - 1];
+        const current = valid[i];
+        if (current.value >= level) {
+          const span = current.value - prev.value;
+          if (Math.abs(span) < 1e-9) return current.tau;
+          const t = clamp((level - prev.value) / span, 0, 1);
+          return prev.tau + (current.tau - prev.tau) * t;
+        }
+      }
+      return null;
+    }
+
+    function heatmapDiagonalCrossing(heatmap, key, level) {
+      return crossingInSeries(heatmap.values.map((tau, index) => {
+        const cell = heatmap.grid[index]?.[index];
+        return cell ? { tau, value: cell[key] } : null;
+      }), level);
+    }
+
+    function heatmapContourStats(heatmap, key, level) {
+      const crossings = [];
+      for (let row = 0; row < heatmap.values.length; row += 1) {
+        const tauBlue = heatmap.values[row];
+        const tauRedCrossing = crossingInSeries(heatmap.values.map((tauRed, col) => {
+          const cell = heatmap.grid[row]?.[col];
+          return cell ? { tau: tauRed, value: cell[key] } : null;
+        }), level);
+        if (tauRedCrossing !== null) crossings.push({ tauBlue, tauRed: tauRedCrossing });
+      }
+      const tauRValues = crossings.map(point => point.tauRed);
+      const tauSums = crossings.map(point => point.tauBlue + point.tauRed);
+      return {
+        level,
+        count: crossings.length,
+        missingRows: heatmap.values.length - crossings.length,
+        diagonalTau: heatmapDiagonalCrossing(heatmap, key, level),
+        tauRMin: tauRValues.length ? Math.min(...tauRValues) : null,
+        tauRMax: tauRValues.length ? Math.max(...tauRValues) : null,
+        tauRMean: tauRValues.length ? tauRValues.reduce((sum, value) => sum + value, 0) / tauRValues.length : null,
+        tauSumMean: tauSums.length ? tauSums.reduce((sum, value) => sum + value, 0) / tauSums.length : null
+      };
+    }
+
+    function heatmapAsymmetryScore(heatmap, key = "segregated_share_mean") {
+      let total = 0;
+      let count = 0;
+      for (let row = 0; row < heatmap.values.length; row += 1) {
+        for (let col = row + 1; col < heatmap.values.length; col += 1) {
+          const a = heatmap.grid[row]?.[col];
+          const b = heatmap.grid[col]?.[row];
+          if (a && b) {
+            total += Math.abs(a[key] - b[key]);
+            count += 1;
+          }
+        }
+      }
+      return count ? total / count : 0;
+    }
+
     function updateHeatmapDerived(heatmap) {
       const cells = heatmap.cells;
       if (!cells.length) {
@@ -2126,6 +2319,9 @@
         heatmap.meanHighDemandBlocked = null;
         heatmap.meanRepsPerCell = heatmap.reps || 0;
         heatmap.monotoneViolations = 0;
+        heatmap.transitionBandShare = 0;
+        heatmap.asymmetryScore = 0;
+        heatmap.contours = {};
         return;
       }
       heatmap.maxSegregatedShare = Math.max(...cells.map(cell => cell.segregated_share_mean));
@@ -2139,6 +2335,23 @@
         ? highDemand.reduce((sum, cell) => sum + cell.p_blocked_mean, 0) / highDemand.length
         : null;
       heatmap.monotoneViolations = heatmap.done ? countMonotoneDips(heatmap) : 0;
+      heatmap.transitionBandShare = cells.filter(cell => cell.segregated_share_mean >= 0.35 && cell.segregated_share_mean <= 0.65).length / cells.length;
+      heatmap.asymmetryScore = heatmap.done ? heatmapAsymmetryScore(heatmap) : 0;
+      heatmap.contours = heatmap.done ? {
+        all50: heatmapContourStats(heatmap, "segregated_share_mean", 0.5),
+        all90: heatmapContourStats(heatmap, "segregated_share_mean", 0.9),
+        nontrivial50: heatmapContourStats(heatmap, "nontrivial_segregated_share_mean", 0.5),
+        nontrivial90: heatmapContourStats(heatmap, "nontrivial_segregated_share_mean", 0.9)
+      } : {};
+    }
+
+    function contourValueText(value) {
+      return value === null || value === undefined ? "not crossed" : number(value, 2);
+    }
+
+    function contourRangeText(contour) {
+      if (!contour || !contour.count) return "not crossed";
+      return `${contour.count} rows; tau_R ${number(contour.tauRMin, 2)}-${number(contour.tauRMax, 2)}; mean tau_B+tau_R ${number(contour.tauSumMean, 2)}`;
     }
 
     function renderHeatmapExperimentSummary(heatmap) {
@@ -2152,6 +2365,11 @@
         ["E[S] range", `${percent(heatmap.minSegregatedShare)} to ${percent(heatmap.maxSegregatedShare)}`],
         ["High-demand min", highDemandText],
         ["Monotone dips", heatmap.monotoneViolations ? `${heatmap.monotoneViolations} over 4 pp` : "none over 4 pp"],
+        ["Diagonal 50% / 90%", `${contourValueText(heatmap.contours.all50?.diagonalTau)} / ${contourValueText(heatmap.contours.all90?.diagonalTau)}`],
+        ["50% contour", contourRangeText(heatmap.contours.all50)],
+        ["90% contour", contourRangeText(heatmap.contours.all90)],
+        ["Mirror asymmetry", `${number(100 * heatmap.asymmetryScore, 1)} pp mean abs difference`],
+        ["Transition-band cells", percent(heatmap.transitionBandShare)],
         ["Mean P(blocked)", percent(heatmap.meanBlocked)],
         ["Mean P(max updates)", percent(heatmap.meanMaxedOut)]
       ];
@@ -2160,9 +2378,10 @@
 
     function renderCurrentEstimate(results, config, estimateMode) {
       const configFields = configExportFields(config);
+      const enrichedResults = augmentResults(results, config, estimateMode);
       setExport({
         filename: `rig-${estimateMode}-estimate-seed-${config.seed}.csv`,
-        rows: results.map(result => ({
+        rows: enrichedResults.map(result => ({
           experiment: `${estimateMode}-estimate`,
           ...configFields,
           ...result
@@ -2171,33 +2390,106 @@
 
       if (estimateMode === "threshold") {
         const rows = [
-          ["P(happy stop)", estimateText(summarize(results, "happy"), 1, 100, "%")],
-          ["P(no happy move)", estimateText(summarize(results, "blocked"), 1, 100, "%")],
-          ["E[segregated share]", estimateText(summarize(results, "segregatedShare"), 1, 100, "%")],
-          ["E[segregated share | size >= 2]", estimateText(summarize(results, "nontrivialSegregatedShare"), 1, 100, "%")],
-          ["E[active-edge share]", estimateText(summarize(results, "activeShare"), 1, 100, "%")],
-          ["E[T_stop]", estimateText(summarize(results, "updates"), 1)],
-          ["E[unhappy agents]", estimateText(summarize(results, "unhappyAgents"), 2)],
-          ["E[unhappy B/R]", `${estimateText(summarize(results, "unhappyBlueAgents"), 2)} / ${estimateText(summarize(results, "unhappyRedAgents"), 2)}`],
-          ["E[blue-only/red-only]", `${estimateText(summarize(results, "blueOnlyGroups"), 2)} / ${estimateText(summarize(results, "redOnlyGroups"), 2)}`],
-          ["E[edge density]", estimateText(summarize(results, "edgeDensity"), 3)],
-          ["P(max updates)", estimateText(summarize(results, "maxedOut"), 1, 100, "%")]
+          ["P(happy stop)", estimateText(summarize(enrichedResults, "happy"), 1, 100, "%")],
+          ["P(no happy move)", estimateText(summarize(enrichedResults, "blocked"), 1, 100, "%")],
+          ["E[segregated share]", estimateText(summarize(enrichedResults, "segregatedShare"), 1, 100, "%")],
+          ["E[segregated share | size >= 2]", estimateText(summarize(enrichedResults, "nontrivialSegregatedShare"), 1, 100, "%")],
+          ["E[active-edge share]", estimateText(summarize(enrichedResults, "activeShare"), 1, 100, "%")],
+          ["E[T_stop]", estimateText(summarize(enrichedResults, "updates"), 1)],
+          ["E[T_stop / n]", estimateText(summarize(enrichedResults, "updates_over_n"), 3)],
+          ["E[singleton share]", estimateText(summarize(enrichedResults, "singleton_share"), 1, 100, "%")],
+          ["E[observed/expected degree]", estimateText(summarize(enrichedResults, "observed_expected_degree_ratio"), 2)],
+          ["E[unhappy agents]", estimateText(summarize(enrichedResults, "unhappyAgents"), 2)],
+          ["E[unhappy B/R]", `${estimateText(summarize(enrichedResults, "unhappyBlueAgents"), 2)} / ${estimateText(summarize(enrichedResults, "unhappyRedAgents"), 2)}`],
+          ["E[blue-only/red-only]", `${estimateText(summarize(enrichedResults, "blueOnlyGroups"), 2)} / ${estimateText(summarize(enrichedResults, "redOnlyGroups"), 2)}`],
+          ["E[edge density]", estimateText(summarize(enrichedResults, "edgeDensity"), 3)],
+          ["P(max updates)", estimateText(summarize(enrichedResults, "maxedOut"), 1, 100, "%")]
         ];
-        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds at &tau;<sub>B</sub>=${number(config.tauBlue, 2)}, &tau;<sub>R</sub>=${number(config.tauRed, 2)}. Values show mean +/- Monte Carlo standard error.${tableHtml(["Observable", "Estimate"], rows)}${exportNote()}`;
+        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${enrichedResults.length} seeds at &tau;<sub>B</sub>=${number(config.tauBlue, 2)}, &tau;<sub>R</sub>=${number(config.tauRed, 2)}. Values show mean +/- Monte Carlo standard error; CSV also includes per-seed normalized diagnostics for finite-size analysis.${tableHtml(["Observable", "Estimate"], rows)}${exportNote()}`;
       } else {
         const rows = [
-          ["P(absorbed)", estimateText(summarize(results, "absorbed"), 1, 100, "%")],
-          ["P(blue consensus)", estimateText(summarize(results, "globalBlue"), 1, 100, "%")],
-          ["P(red consensus)", estimateText(summarize(results, "globalRed"), 1, 100, "%")],
-          ["P(local consensus)", estimateText(summarize(results, "localConsensus"), 1, 100, "%")],
-          ["E[final blue share]", estimateText(summarize(results, "blueShare"), 1, 100, "%")],
-          ["E[events to stop/horizon]", estimateText(summarize(results, "events"), 1)],
-          ["E[edge density]", estimateText(summarize(results, "edgeDensity"), 3)],
-          ["E[joins/leaves]", `${estimateText(summarize(results, "joins"), 1)} / ${estimateText(summarize(results, "leaves"), 1)}`],
-          ["P(max events)", estimateText(summarize(results, "maxedOut"), 1, 100, "%")]
+          ["P(absorbed)", estimateText(summarize(enrichedResults, "absorbed"), 1, 100, "%")],
+          ["P(blue consensus)", estimateText(summarize(enrichedResults, "globalBlue"), 1, 100, "%")],
+          ["P(red consensus)", estimateText(summarize(enrichedResults, "globalRed"), 1, 100, "%")],
+          ["P(local consensus)", estimateText(summarize(enrichedResults, "localConsensus"), 1, 100, "%")],
+          ["E[final blue share]", estimateText(summarize(enrichedResults, "blueShare"), 1, 100, "%")],
+          ["E[events to stop/horizon]", estimateText(summarize(enrichedResults, "events"), 1)],
+          ["E[events / n]", estimateText(summarize(enrichedResults, "events_over_n"), 2)],
+          ["E[graph turnover/event]", estimateText(summarize(enrichedResults, "graph_turnover_per_event"), 3)],
+          ["E[observed/expected degree]", estimateText(summarize(enrichedResults, "observed_expected_degree_ratio"), 2)],
+          ["E[edge density]", estimateText(summarize(enrichedResults, "edgeDensity"), 3)],
+          ["E[joins/leaves]", `${estimateText(summarize(enrichedResults, "joins"), 1)} / ${estimateText(summarize(enrichedResults, "leaves"), 1)}`],
+          ["P(max events)", estimateText(summarize(enrichedResults, "maxedOut"), 1, 100, "%")]
         ];
-        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${results.length} seeds at &gamma;=${number(config.joinRate, 2)}, &mu;=${number(config.leaveRate, 2)}. Values show mean +/- Monte Carlo standard error. For &gamma;>0, absorption means global consensus before the finite event horizon.${tableHtml(["Observable", "Estimate"], rows)}${exportNote()}`;
+        els.ensemble.innerHTML = `Current-parameter Monte Carlo with ${enrichedResults.length} seeds at &gamma;=${number(config.joinRate, 2)}, &mu;=${number(config.leaveRate, 2)}. Values show mean +/- Monte Carlo standard error. For &gamma;>0, absorption means global consensus before the finite event horizon.${tableHtml(["Observable", "Estimate"], rows)}${exportNote()}`;
       }
+    }
+
+    function roundToStep(value, step) {
+      return Math.round(value / step) * step;
+    }
+
+    function finiteSizeValues(baseConfig, experimentMode) {
+      const hardMax = experimentMode === "voter" ? 500 : 800;
+      const candidates = [0.5, 0.75, 1, 1.5, 2, 3]
+        .map(multiplier => roundToStep(baseConfig.n * multiplier, 10))
+        .concat([baseConfig.n, 100, 200, 400]);
+      const values = Array.from(new Set(candidates
+        .map(value => clamp(roundToStep(value, 10), 50, hardMax))
+        .filter(value => value >= 50 && value <= hardMax)))
+        .sort((a, b) => a - b);
+      return values.slice(0, 7);
+    }
+
+    function scaledConfigForN(baseConfig, n) {
+      const beta = baseConfig.m ? baseConfig.n / baseConfig.m : 1;
+      const m = clamp(roundToStep(n / beta, 2), 10, 240);
+      return { ...baseConfig, n, m };
+    }
+
+    function aggregateThresholdResults(results, config, experiment) {
+      const enriched = augmentResults(results, config, "threshold");
+      return {
+        experiment,
+        ...configExportFields(config),
+        reps: enriched.length,
+        ...summaryFields(enriched, "happy", "p_happy"),
+        ...summaryFields(enriched, "blocked", "p_blocked"),
+        ...summaryFields(enriched, "maxedOut", "p_max_updates"),
+        ...summaryFields(enriched, "segregatedShare", "segregated_share"),
+        ...summaryFields(enriched, "nontrivialSegregatedShare", "nontrivial_segregated_share"),
+        ...summaryFields(enriched, "activeShare", "active_edge_share"),
+        ...summaryFields(enriched, "updates", "updates"),
+        ...summaryFields(enriched, "updates_over_n", "updates_over_n"),
+        ...summaryFields(enriched, "updates_over_expected_memberships", "updates_over_expected_memberships"),
+        ...summaryFields(enriched, "singleton_share", "singleton_share"),
+        ...summaryFields(enriched, "observed_expected_degree_ratio", "observed_expected_degree_ratio"),
+        ...summaryFields(enriched, "unhappyAgents", "unhappy_agents"),
+        ...summaryFields(enriched, "blueOnlyGroups", "blue_only_groups"),
+        ...summaryFields(enriched, "redOnlyGroups", "red_only_groups")
+      };
+    }
+
+    function aggregateVoterResults(results, config, experiment) {
+      const enriched = augmentResults(results, config, "voter");
+      return {
+        experiment,
+        ...configExportFields(config),
+        reps: enriched.length,
+        ...summaryFields(enriched, "absorbed", "p_absorbed"),
+        ...summaryFields(enriched, "globalBlue", "p_blue_consensus"),
+        ...summaryFields(enriched, "globalRed", "p_red_consensus"),
+        ...summaryFields(enriched, "localConsensus", "p_local_consensus"),
+        ...summaryFields(enriched, "maxedOut", "p_max_events"),
+        ...summaryFields(enriched, "blueShare", "final_blue_share"),
+        ...summaryFields(enriched, "events", "events"),
+        ...summaryFields(enriched, "events_over_n", "events_over_n"),
+        ...summaryFields(enriched, "graph_turnover_per_event", "graph_turnover_per_event"),
+        ...summaryFields(enriched, "observed_expected_degree_ratio", "observed_expected_degree_ratio"),
+        ...summaryFields(enriched, "edgeDensity", "edge_density"),
+        ...summaryFields(enriched, "joins", "joins"),
+        ...summaryFields(enriched, "leaves", "leaves")
+      };
     }
 
     function runCurrentEstimate() {
@@ -2221,6 +2513,111 @@
         }
         if (token !== experimentToken) return;
         renderCurrentEstimate(results, config, estimateMode);
+        setExperimentBusy(false);
+      }, 20);
+    }
+
+    function runScaleSweep() {
+      if (mode === "heatmap") return;
+      const token = ++experimentToken;
+      const baseConfig = configFromControls();
+      const sweepMode = mode;
+      const reps = replicateCount(sweepMode === "voter" ? 50 : 80);
+      const nValues = finiteSizeValues(baseConfig, sweepMode);
+      els.ensemble.textContent = `Calculating finite-size sweep at approximately fixed n/m with ${reps} seeds per size...`;
+      setExperimentBusy(true);
+      setTimeout(() => {
+        if (token !== experimentToken) return;
+        const exportRows = [];
+        const displayRows = [];
+        for (const n of nValues) {
+          const config = scaledConfigForN(baseConfig, n);
+          const results = [];
+          for (let i = 0; i < reps; i += 1) {
+            const seed = config.seed + 7919 * i + 37 * n + 101 * config.m;
+            const result = sweepMode === "threshold" ? simulateThresholdBatch(config, seed) : simulateVoterBatch(config, seed);
+            results.push({ seed, ...result });
+          }
+          const aggregate = sweepMode === "threshold"
+            ? aggregateThresholdResults(results, config, "threshold-finite-size-sweep")
+            : aggregateVoterResults(results, config, "voter-finite-size-sweep");
+          exportRows.push({
+            scale_rule: "approximately fixed n_over_m",
+            base_n: baseConfig.n,
+            base_m: baseConfig.m,
+            ...aggregate
+          });
+          if (sweepMode === "threshold") {
+            displayRows.push([
+              String(config.n),
+              String(config.m),
+              estimateText(summarize(augmentResults(results, config, "threshold"), "nontrivialSegregatedShare"), 0, 100, "%"),
+              estimateText(summarize(augmentResults(results, config, "threshold"), "updates_over_n"), 2),
+              estimateText(summarize(augmentResults(results, config, "threshold"), "singleton_share"), 0, 100, "%"),
+              estimateText(summarize(augmentResults(results, config, "threshold"), "blocked"), 0, 100, "%")
+            ]);
+          } else {
+            displayRows.push([
+              String(config.n),
+              String(config.m),
+              estimateText(summarize(augmentResults(results, config, "voter"), "globalBlue"), 0, 100, "%"),
+              estimateText(summarize(augmentResults(results, config, "voter"), "absorbed"), 0, 100, "%"),
+              estimateText(summarize(augmentResults(results, config, "voter"), "events_over_n"), 1),
+              estimateText(summarize(augmentResults(results, config, "voter"), "maxedOut"), 0, 100, "%")
+            ]);
+          }
+        }
+        if (token !== experimentToken) return;
+        setExport({ filename: `rig-${sweepMode}-finite-size-seed-${baseConfig.seed}.csv`, rows: exportRows });
+        if (sweepMode === "threshold") {
+          els.ensemble.innerHTML = `Finite-size sweep with approximately fixed n/m=${number(baseConfig.n / baseConfig.m, 2)}, &lambda;=${number(baseConfig.lambda, 2)}, and ${reps} seeds per size. Stable E[S size>=2] and T/n across rows is evidence for a limiting threshold surface; drift usually means singleton bias, finite m constraints, or a metastable stopping-time scale.${tableHtml(["n", "m", "E[S >=2]", "E[T/n]", "Singletons", "P blocked"], displayRows)}${exportNote()}`;
+        } else {
+          els.ensemble.innerHTML = `Finite-size voter sweep with approximately fixed n/m=${number(baseConfig.n / baseConfig.m, 2)}, &lambda;=${number(baseConfig.lambda, 2)}, &gamma;=${number(baseConfig.joinRate, 2)}, &mu;=${number(baseConfig.leaveRate, 2)}, and ${reps} seeds per size. Use E[events/n] and P(max events) to separate true slow consensus from the finite event horizon.${tableHtml(["n", "m", "P blue", "P absorbed", "E[T/n]", "P max"], displayRows)}${exportNote()}`;
+        }
+        setExperimentBusy(false);
+      }, 20);
+    }
+
+    function voterGammaValues(currentGamma) {
+      return Array.from(new Set([0, 0.02, 0.05, 0.10, 0.20, 0.35, 0.50, 0.75, 1.00, currentGamma]
+        .map(value => Number(clamp(value, 0, 1).toFixed(2)))))
+        .sort((a, b) => a - b);
+    }
+
+    function runVoterGammaSweep() {
+      if (mode !== "voter") return;
+      const token = ++experimentToken;
+      const baseConfig = configFromControls();
+      const reps = replicateCount(80);
+      const gammas = voterGammaValues(baseConfig.joinRate);
+      els.ensemble.textContent = `Calculating voter gamma sweep with ${reps} seeds per value...`;
+      setExperimentBusy(true);
+      setTimeout(() => {
+        if (token !== experimentToken) return;
+        const exportRows = [];
+        const displayRows = [];
+        for (const gamma of gammas) {
+          const config = { ...baseConfig, joinRate: gamma };
+          const results = [];
+          for (let i = 0; i < reps; i += 1) {
+            const seed = config.seed + 1009 * i + Math.round(100000 * gamma);
+            results.push({ seed, ...simulateVoterBatch(config, seed) });
+          }
+          const enriched = augmentResults(results, config, "voter");
+          exportRows.push(aggregateVoterResults(results, config, "voter-gamma-sweep"));
+          displayRows.push([
+            number(gamma, 2),
+            estimateText(summarize(enriched, "globalBlue"), 0, 100, "%"),
+            estimateText(summarize(enriched, "globalRed"), 0, 100, "%"),
+            estimateText(summarize(enriched, "absorbed"), 0, 100, "%"),
+            estimateText(summarize(enriched, "events_over_n"), 1),
+            estimateText(summarize(enriched, "graph_turnover_per_event"), 3),
+            estimateText(summarize(enriched, "maxedOut"), 0, 100, "%")
+          ]);
+        }
+        if (token !== experimentToken) return;
+        setExport({ filename: `rig-voter-gamma-sweep-seed-${baseConfig.seed}.csv`, rows: exportRows });
+        els.ensemble.innerHTML = `Voter gamma sweep at fixed n=${baseConfig.n}, m=${baseConfig.m}, &lambda;=${number(baseConfig.lambda, 2)}, &mu;=${number(baseConfig.leaveRate, 2)}, and p<sub>B</sub>=${number(baseConfig.pBlue, 2)}. Compare P(blue consensus) with p<sub>B</sub> and watch E[T/n] as graph refresh increases; large P(max events) marks parameter values needing a longer horizon or asymptotic scaling run.${tableHtml(["gamma", "P blue", "P red", "P abs", "E[T/n]", "Turnover", "P max"], displayRows)}${exportNote()}`;
         setExperimentBusy(false);
       }, 20);
     }
@@ -2456,6 +2853,8 @@
       els.estimate.textContent = mode === "heatmap" ? stoppableHeatmap ? "Stop" : "Compute heatmap" : "Estimate";
       els.sweepTau.disabled = isBusy;
       els.sweepTauGrid.disabled = isBusy;
+      els.scaleSweep.disabled = isBusy;
+      els.voterSweep.disabled = isBusy;
       els.exportCsv.disabled = isBusy || !lastExport;
       els.replicates.disabled = isBusy;
     }
@@ -3095,6 +3494,8 @@
     });
     els.sweepTau.addEventListener("click", runTauSweep);
     els.sweepTauGrid.addEventListener("click", runTauGrid);
+    els.scaleSweep.addEventListener("click", runScaleSweep);
+    els.voterSweep.addEventListener("click", runVoterGammaSweep);
     els.exportCsv.addEventListener("click", downloadCsv);
 
     window.addEventListener("resize", () => {
